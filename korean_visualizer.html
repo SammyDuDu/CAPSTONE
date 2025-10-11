@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Korean Vowel Visualizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        'primary': '#4F46E5', // Indigo
+                        'secondary': '#E0F2F1', // Teal Light
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        #canvas {
+            background: #0F172A; /* Slate 900 */
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2);
+            width: 100%;
+            height: 300px;
+            max-width: 800px;
+        }
+        .loading-spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #4F46E5;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        /* Custom pulsing effect for recording */
+        .recording-pulse {
+            animation: pulse-red 1s infinite;
+        }
+        @keyframes pulse-red {
+            0%, 100% { background-color: #EF4444; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { background-color: #DC2626; box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4 font-sans">
+
+    <div class="w-full max-w-4xl bg-white p-6 md:p-10 rounded-xl shadow-2xl space-y-6">
+        <h1 class="text-3xl font-extrabold text-gray-900 text-center">
+            Korean Vowel Pronunciation Visualizer
+        </h1>
+        <p class="text-center text-gray-600">
+            Click 'Start Recording' to capture your voice for server-side acoustic analysis.
+        </p>
+
+        <div class="flex flex-col md:flex-row items-center justify-between p-4 bg-secondary rounded-lg border border-teal-300">
+            <div class="text-center md:text-left mb-4 md:mb-0">
+                <p class="text-lg font-semibold text-gray-700">Target Vowel:</p>
+                <div id="target-vowel" class="text-6xl font-black text-primary transition duration-300">
+                    아
+                </div>
+                <p class="text-sm text-gray-500">(/a/ as in 'father')</p>
+            </div>
+            
+            <button id="start-button" class="px-6 py-3 bg-primary text-white font-bold text-lg rounded-lg shadow-lg hover:bg-indigo-600 transition duration-150 transform hover:scale-105 active:scale-95 flex items-center justify-center">
+                Start Recording
+            </button>
+            <div id="status-message" class="text-lg font-semibold text-gray-800 mt-4 md:mt-0 md:text-right">
+                Ready to begin.
+            </div>
+        </div>
+        
+        <!-- Score Display -->
+        <div id="score-display" class="hidden text-center p-4 rounded-lg bg-gray-50 border border-gray-200">
+            <p class="text-2xl font-bold text-gray-700">Similarity Score:</p>
+            <p id="score-value" class="text-5xl font-black text-red-500 mt-2">--</p>
+            <p id="score-feedback" class="text-lg text-gray-600 mt-1">Record to get feedback.</p>
+        </div>
+
+        <!-- Visualization Canvas (Still used for live feedback during recording) -->
+        <canvas id="canvas" width="800" height="300"></canvas>
+
+        <div class="flex justify-center items-center space-x-4 pt-4">
+            <div class="flex items-center space-x-2">
+                <div class="w-4 h-4 bg-red-500 rounded-full"></div>
+                <span class="text-sm text-gray-700">Target Spectrum</span>
+            </div>
+            <div class="flex items-center space-x-2">
+                <div class="w-4 h-4 bg-blue-400 rounded-full"></div>
+                <span class="text-sm text-gray-700">Your Voice (Live)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Spinner and Error Modal -->
+    <div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="loading-spinner" id="api-loading-spinner"></div>
+    </div>
+
+    <div id="modal-container" class="fixed inset-0 bg-black bg-opacity-50 items-center justify-center z-50 hidden">
+        <div class="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full mx-4">
+            <h3 id="modal-title" class="text-xl font-bold mb-3 text-red-600">Error</h3>
+            <p id="modal-content" class="text-gray-700 mb-4">An unknown error occurred.</p>
+            <button onclick="document.getElementById('modal-container').classList.add('hidden')" class="w-full bg-primary text-white py-2 rounded-lg hover:bg-indigo-600 transition">
+                Close
+            </button>
+        </div>
+    </div>
+
+    <script type="module">
+        // --- Utility Functions (Kept for API calls) ---
+        const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+        const loadingOverlay = document.getElementById('loading-overlay');
+
+        async function fetchWithRetry(url, options, maxRetries = 5) {
+            loadingOverlay.classList.remove('hidden');
+            try {
+                for (let i = 0; i < maxRetries; i++) {
+                    try {
+                        const response = await fetch(url, options);
+                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                        loadingOverlay.classList.add('hidden');
+                        return response;
+                    } catch (error) {
+                        if (i === maxRetries - 1) throw error;
+                        const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
+                        await sleep(delay);
+                    }
+                }
+            } catch (error) {
+                loadingOverlay.classList.add('hidden');
+                throw error;
+            }
+        }
+        
+        function showModal(title, content, isError = true) {
+            const modalContainer = document.getElementById('modal-container');
+            const modalTitle = document.getElementById('modal-title');
+            const modalContent = document.getElementById('modal-content');
+            modalTitle.textContent = title;
+            modalTitle.className = isError ? 'text-xl font-bold mb-3 text-red-600' : 'text-xl font-bold mb-3 text-primary';
+            modalContent.textContent = content;
+            modalContainer.classList.remove('hidden');
+            modalContainer.classList.add('flex');
+        }
+
+        // --- Core Application Logic ---
+        const startButton = document.getElementById('start-button');
+        const statusMessage = document.getElementById('status-message');
+        const canvas = document.getElementById('canvas');
+        const canvasCtx = canvas.getContext('2d');
+        const scoreDisplay = document.getElementById('score-display');
+        const scoreValue = document.getElementById('score-value');
+        const scoreFeedback = document.getElementById('score-feedback');
+
+        let audioContext;
+        let analyser;
+        let dataArray;
+        let mediaStream;
+        let visualizationId;
+        const BUFFER_SIZE = 2048; 
+        const RECORDING_DURATION_MS = 3000; // Record for 3 seconds
+
+        // New variables for MediaRecorder
+        let mediaRecorder;
+        let audioChunks = [];
+        let isRecording = false;
+
+        // Idealized target spectrum (placeholder for server's target)
+        const TARGET_SPECTRUM_SIZE = 128; 
+        const targetSpectrum = new Array(TARGET_SPECTRUM_SIZE).fill(0).map((_, i) => {
+            const index = i / TARGET_SPECTRUM_SIZE;
+            if (index < 0.2) return 50 + index * 300; 
+            if (index < 0.4) return 110 - (index - 0.2) * 200; 
+            if (index < 0.6) return 80 + (index - 0.4) * 150; 
+            return 80 - (index - 0.6) * 100; 
+        });
+        
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            canvas.width = container.clientWidth;
+            canvas.height = 300;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function updateScoreDisplay(score) {
+            scoreDisplay.classList.remove('hidden');
+            scoreValue.textContent = `${score}%`;
+            
+            let feedbackText;
+            let colorClass;
+
+            if (score >= 90) {
+                feedbackText = "Excellent pronunciation! Perfect match.";
+                colorClass = 'text-green-500';
+            } else if (score >= 70) {
+                feedbackText = "Very good! Just a little more practice needed.";
+                colorClass = 'text-yellow-500';
+            } else if (score >= 50) {
+                feedbackText = "Keep practicing! Check your mouth position.";
+                colorClass = 'text-orange-500';
+            } else {
+                feedbackText = "Let's try that again. Focus on the sound shape.";
+                colorClass = 'text-red-500';
+            }
+            
+            scoreValue.className = `text-5xl font-black mt-2 ${colorClass}`;
+            scoreFeedback.textContent = feedbackText;
+        }
+
+        async function sendAudioForAnalysis(audioBlob) {
+            statusMessage.textContent = 'Sending audio to server for analysis...';
+            scoreDisplay.classList.add('hidden');
+            startButton.disabled = true;
+
+            try {
+                // 1. Prepare data for server
+                const formData = new FormData();
+                formData.append('audio', audioBlob, 'vowel_recording.webm');
+                formData.append('target', document.getElementById('target-vowel').textContent.trim());
+                
+                // 2. Mock API Call (Replace with your actual server endpoint)
+                const mockServerUrl = 'https://your-capstone-server.com/api/analyze-vowel'; 
+                
+                // --- CAPSTONE NOTE: Since no real server exists, we simulate success and failure here ---
+                
+                // SIMULATING A SUCCESSFUL RESPONSE AFTER A DELAY
+                await sleep(1500); // Simulate network and server processing delay
+                
+                // The JSON response your server should send back:
+                const mockResponse = {
+                    score: Math.floor(Math.random() * 50) + 50, // Score between 50 and 99
+                    message: "Analysis complete."
+                };
+                
+                // 3. Process the (Mock) Response
+                const result = mockResponse; // If using fetch, this would be `await response.json();`
+
+                updateScoreDisplay(result.score);
+                statusMessage.textContent = `Analysis complete! Score: ${result.score}%`;
+                
+            } catch (err) {
+                showModal('Server Error', 'Failed to get analysis from the server. Check the server console or network connection.');
+                statusMessage.textContent = 'Analysis failed. Ready to re-record.';
+            } finally {
+                startButton.disabled = false;
+                startButton.textContent = 'Start Recording';
+                startButton.classList.remove('recording-pulse');
+                startButton.classList.replace('bg-red-500', 'bg-primary');
+                startButton.classList.replace('hover:bg-red-600', 'hover:bg-indigo-600');
+            }
+        }
+        
+        async function startRecording() {
+            if (isRecording) {
+                // Stop button logic is handled by the timeout below, but if we had a manual stop button, it would call:
+                // mediaRecorder.stop();
+                return;
+            }
+
+            try {
+                startButton.disabled = true;
+                statusMessage.textContent = 'Requesting microphone access...';
+                
+                // 1. Get Microphone Stream
+                mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+                // 2. Setup Web Audio API (for live visualization)
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioContext.state === 'suspended') { await audioContext.resume(); }
+
+                const source = audioContext.createMediaStreamSource(mediaStream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = BUFFER_SIZE;
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                source.connect(analyser);
+
+                // 3. Setup MediaRecorder
+                audioChunks = [];
+                mediaRecorder = new MediaRecorder(mediaStream, { mimeType: 'audio/webm' });
+                
+                mediaRecorder.ondataavailable = event => {
+                    audioChunks.push(event.data);
+                };
+
+                mediaRecorder.onstop = () => {
+                    stopVisualization();
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    sendAudioForAnalysis(audioBlob);
+                };
+
+                // 4. Start Recording and Visualization
+                mediaRecorder.start(100); // Record in 100ms chunks
+                isRecording = true;
+                visualize();
+
+                // UI updates for recording state
+                startButton.disabled = false;
+                startButton.textContent = 'Recording (3s)';
+                startButton.classList.add('recording-pulse');
+                startButton.classList.replace('bg-primary', 'bg-red-500');
+                startButton.classList.replace('hover:bg-indigo-600', 'hover:bg-red-600');
+                statusMessage.textContent = 'Recording... Say "아" now!';
+                
+                // 5. Automatic Stop after duration
+                setTimeout(() => {
+                    if (mediaRecorder && mediaRecorder.state === 'recording') {
+                        statusMessage.textContent = 'Recording finished. Sending audio...';
+                        mediaRecorder.stop();
+                        isRecording = false;
+                        // MediaRecorder.onstop handles the next steps (sending data)
+                    }
+                }, RECORDING_DURATION_MS);
+
+            } catch (err) {
+                console.error('Error accessing microphone:', err);
+                const errorMessage = err.name === 'NotAllowedError' 
+                    ? 'Microphone access denied. Please allow it in browser settings.'
+                    : 'Could not access microphone: ' + err.message;
+
+                showModal('Microphone Error', errorMessage);
+                
+                startButton.textContent = 'Start Recording';
+                startButton.classList.replace('bg-red-500', 'bg-primary');
+                startButton.classList.replace('hover:bg-red-600', 'hover:bg-indigo-600');
+                startButton.disabled = false;
+                statusMessage.textContent = 'Ready to begin.';
+            }
+        }
+
+        function stopVisualization() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+            }
+            if (audioContext) {
+                // We keep the context open unless we need to forcibly close it
+            }
+            if (visualizationId) {
+                cancelAnimationFrame(visualizationId);
+                visualizationId = null;
+            }
+
+            // Clear Canvas
+            canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+            canvasCtx.fillStyle = '#0F172A';
+            canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function visualize() {
+            if (!analyser || !canvasCtx) return;
+
+            visualizationId = requestAnimationFrame(visualize);
+
+            // Get new audio data
+            analyser.getByteFrequencyData(dataArray);
+
+            // Clear canvas
+            canvasCtx.fillStyle = '#0F172A';
+            canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const width = canvas.width;
+            const height = canvas.height;
+            const step = width / TARGET_SPECTRUM_SIZE;
+            
+            // --- 1. Draw Grid/Reference Lines ---
+            canvasCtx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            canvasCtx.lineWidth = 1;
+            for (let i = 1; i < 4; i++) {
+                const y = height * i / 4;
+                canvasCtx.beginPath();
+                canvasCtx.moveTo(0, y);
+                canvasCtx.lineTo(width, y);
+                canvasCtx.stroke();
+            }
+
+            // --- 2. Draw Target Spectrum (Red Line) ---
+            canvasCtx.lineWidth = 3;
+            canvasCtx.strokeStyle = 'rgb(239, 68, 68)'; // Red 500
+            canvasCtx.beginPath();
+            
+            for (let i = 0; i < TARGET_SPECTRUM_SIZE; i++) {
+                const v = targetSpectrum[i] / 255.0;
+                const x = i * step;
+                const y = height - (v * height * 0.9); 
+
+                if (i === 0) {
+                    canvasCtx.moveTo(x, y);
+                } else {
+                    canvasCtx.lineTo(x, y);
+                }
+            }
+            canvasCtx.stroke();
+            
+            // --- 3. Draw Live User Spectrum (Blue Line) ---
+            canvasCtx.lineWidth = 3;
+            canvasCtx.strokeStyle = 'rgb(96, 165, 250)'; // Blue 400
+            canvasCtx.beginPath();
+
+            for (let i = 0; i < TARGET_SPECTRUM_SIZE; i++) {
+                const v = dataArray[i] / 255.0;
+                const x = i * step;
+                const y = height - (v * height * 0.9);
+
+                if (i === 0) {
+                    canvasCtx.moveTo(x, y);
+                } else {
+                    canvasCtx.lineTo(x, y);
+                }
+            }
+            canvasCtx.stroke();
+        }
+
+        // Event Listeners
+        startButton.addEventListener('click', startRecording);
+
+        window.onload = () => {
+             console.log("Application loaded and ready for server-side processing flow.");
+        };
+
+    </script>
+</body>
+</html>
