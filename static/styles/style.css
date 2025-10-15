@@ -1,0 +1,33 @@
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #f7f9fc; /* Light background */
+}
+
+.container {
+    max-width: 900px;
+}
+
+.button-record {
+    transition: all 0.2s ease-in-out;
+}
+
+.button-record:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(255, 60, 90, 0.4);
+}
+
+.recording {
+    animation: pulse 1s infinite;
+}
+
+@keyframes pulse {
+    0% { 
+        box-shadow: 0 0 0 0 rgba(255, 60, 90, 0.7); 
+    }
+    70% { 
+        box-shadow: 0 0 0 20px rgba(255, 60, 90, 0); 
+    }
+    100% { 
+        box-shadow: 0 0 0 0 rgba(255, 60, 90, 0); 
+    }
+}
