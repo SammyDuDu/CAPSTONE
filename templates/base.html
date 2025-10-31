@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>KPC</title>
+        <link rel="stylesheet" href="{{ url_for('static', path='styles/style.css') }}">
+    </head>
+    <body>
+        <div class="topbar">
+            <div class="left-side">
+                <a class="nav-chip" href="{{ url_for('root') }}">한글</a>
+            </div>
+            <div class="brand">FUTURE NAME</div>
+            <div class="right-side">
+                <button class="login-btn" id="openLogin">log in</button>
+            </div>
+        </div>
+
+        <div class="content">
+            {% block content %}{% endblock %}
+        </div>
+
+        <!-- First-visit banner -->
+        <div class="first-visit-banner" id="firstVisitBanner" hidden>
+            <button class="banner-close" id="closeFirstVisit" aria-label="Close">✕</button>
+            <div class="banner-text">
+                Creating an account allows you to adjust learning to your personal voice. This increases accuracy significantly.
+            </div>
+        </div>
+
+        <div class="overlay" id="overlay" hidden></div>
+        <div class="modal" id="loginModal" hidden>
+            <button class="modal-close" id="closeLogin">✕</button>
+            <div class="modal-title" id="authModalTitle">Log in</div>
+            <div class="modal-body">
+                <div id="loginForm">
+                    <label>username</label>
+                    <input type="text" id="loginUsername" class="input" placeholder="username">
+                    <label>password</label>
+                    <input type="password" id="loginPassword" class="input" placeholder="password">
+                    <div class="modal-actions">
+                        <button class="modal-btn" id="submitLogin">log in</button>
+                        <button class="modal-btn secondary" id="submitSignup">sign up</button>
+                    </div>
+                </div>
+                <div id="accountForm" hidden>
+                    <div class="note" id="accountUser"></div>
+                    <label>new password</label>
+                    <input type="password" id="newPassword" class="input" placeholder="new password">
+                    <div class="modal-actions">
+                        <button class="modal-btn" id="changePassword">change password</button>
+                        <button class="modal-btn secondary" id="logoutBtn">log out</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script src="{{ url_for('static', path='scripts/ui.js') }}"></script>
+    </body>
+</html>

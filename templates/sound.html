@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% block content %}
+    <div class="desc-box">
+        <div class="desc-title"><span id="soundSymbol">{{ sound }}</span></div>
+        <div class="desc-text" id="descText">
+            {{ description if description is defined else 'Write the pronunciation tips for this sound here.' }}
+        </div>
+    </div>
+
+    <button class="record-btn" id="recordBtn" aria-pressed="false" title="Record 3 seconds">Record</button>
+
+    <div class="cards">
+        <div class="card">
+            <div class="img-ph"></div>
+            <div class="card-title">box1</div>
+        </div>
+        <div class="card">
+            <div class="img-ph"></div>
+            <div class="card-title">box2</div>
+        </div>
+        <div class="card">
+            <div class="img-ph"></div>
+            <div class="card-title">box3</div>
+        </div>
+        <div class="card">
+            <div class="img-ph"></div>
+            <div class="card-title">box4</div>
+        </div>
+        <div class="card">
+            <div class="img-ph"></div>
+            <div class="card-title">box5</div>
+        </div>
+        <div class="card total">
+            <div class="card-title">total</div>
+            <div class="percent"></div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', path='scripts/sound.js') }}"></script>
+    <script>
+        (function () {
+            // Read sound from query string and store it
+            const params = new URLSearchParams(window.location.search);
+            const s = params.get('s');
+            if (s) {
+                localStorage.setItem('selectedSound', s);
+                const el = document.getElementById('soundSymbol');
+                if (el) el.textContent = s;
+            }
+        })();
+    </script>
+{% endblock %}
+
+
