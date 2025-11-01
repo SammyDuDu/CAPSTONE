@@ -3,6 +3,7 @@
     <head>
         <meta charset="utf-8">
         <title>KPC</title>
+        <link rel="icon" type="image/svg+xml" href="{{ url_for('static', path='images/favicon.svg') }}">
         <link rel="stylesheet" href="{{ url_for('static', path='styles/style.css') }}">
     </head>
     <body>
@@ -10,7 +11,7 @@
             <div class="left-side">
                 <a class="nav-chip" href="{{ url_for('root') }}">한글</a>
             </div>
-            <div class="brand">FUTURE NAME</div>
+            <div class="brand">KoSPA</div>
             <div class="right-side">
                 <button class="login-btn" id="openLogin">log in</button>
             </div>
@@ -25,6 +26,21 @@
             <button class="banner-close" id="closeFirstVisit" aria-label="Close">✕</button>
             <div class="banner-text">
                 Creating an account allows you to adjust learning to your personal voice. This increases accuracy significantly.
+            </div>
+        </div>
+
+        <!-- User created banner -->
+        <div class="first-visit-banner" id="userCreatedBanner" hidden>
+            <div class="banner-text">user created</div>
+        </div>
+
+        <!-- Non-closable voice calibration modal -->
+        <div class="overlay" id="calibrationOverlay" hidden></div>
+        <div class="modal" id="calibrationModal" hidden>
+            <div class="modal-title" style="text-align: center;">Record three basic sounds to calibrate the model</div>
+            <div class="modal-body">
+                <div id="calibrationPrompt" class="calibration-prompt">Say "aaa"</div>
+                <button class="record-btn" id="calibrationRecordBtn" aria-pressed="false" title="Record 3 seconds">Record</button>
             </div>
         </div>
 

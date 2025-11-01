@@ -73,12 +73,25 @@
         const password = (passwordInput && passwordInput.value || '').trim();
         if (!username || !password) { alert('Enter username and password'); return; }
         try {
-            // Calls placeholder endpoint in main.py – replace backend with real DB/SQL
             const out = await postJson('/api/auth/login', { username, password });
             sessionStorage.setItem('username', out.user || username);
+            sessionStorage.setItem('userid', out.userid || '');
             // update topbar button to username
             if (openBtn) openBtn.textContent = out.user || username;
             close();
+            
+            // Check if calibration is needed
+            if (out.calibration_complete === false) {
+                // Show calibration modal if not complete
+                const calOverlay = document.getElementById('calibrationOverlay');
+                const calModal = document.getElementById('calibrationModal');
+                if (calOverlay && calModal) {
+                    if (window.resetCalibration) window.resetCalibration();
+                    calOverlay.hidden = false;
+                    calModal.hidden = false;
+                    document.body.style.overflow = 'hidden';
+                }
+            }
         } catch (e) {
             alert(e.message || 'Login failed');
         }
@@ -89,9 +102,65 @@
         const password = (passwordInput && passwordInput.value || '').trim();
         if (!username || !password) { alert('Enter username and password'); return; }
         try {
-            // Calls placeholder endpoint in main.py – replace backend with real DB/SQL
             const out = await postJson('/api/auth/signup', { username, password });
-            alert(out.message || 'Account created');
+            
+            // Clear input fields
+            if (usernameInput) usernameInput.value = '';
+            if (passwordInput) passwordInput.value = '';
+            
+            // Close login modal immediately
+            close();
+            
+            // Show "user created" banner (show it briefly, then show calibration)
+            const userCreatedBanner = document.getElementById('userCreatedBanner');
+            if (userCreatedBanner) {
+                userCreatedBanner.hidden = false;
+                // Wait a moment before auto-login and calibration modal
+                setTimeout(async () => {
+                    // Auto-login the newly created user
+                    try {
+                        const loginOut = await postJson('/api/auth/login', { username, password });
+                        sessionStorage.setItem('username', loginOut.user || username);
+                        sessionStorage.setItem('userid', loginOut.userid || '');
+                        if (openBtn) openBtn.textContent = loginOut.user || username;
+                    } catch (e) {
+                        console.error('Auto-login failed:', e);
+                    }
+                    
+                    // Hide banner and show calibration modal
+                    if (userCreatedBanner) userCreatedBanner.hidden = true;
+                    
+            // Show non-closable calibration modal
+            const calOverlay = document.getElementById('calibrationOverlay');
+            const calModal = document.getElementById('calibrationModal');
+            if (calOverlay && calModal) {
+                // Reset calibration state
+                if (window.resetCalibration) window.resetCalibration();
+                calOverlay.hidden = false;
+                calModal.hidden = false;
+                document.body.style.overflow = 'hidden';
+            }
+                }, 1500); // Show banner for 1.5 seconds
+            } else {
+                // Fallback if banner doesn't exist - proceed with auto-login and modal
+                try {
+                    const loginOut = await postJson('/api/auth/login', { username, password });
+                    sessionStorage.setItem('username', loginOut.user || username);
+                    sessionStorage.setItem('userid', loginOut.userid || '');
+                    if (openBtn) openBtn.textContent = loginOut.user || username;
+                } catch (e) {
+                    console.error('Auto-login failed:', e);
+                }
+                const calOverlay = document.getElementById('calibrationOverlay');
+                const calModal = document.getElementById('calibrationModal');
+                if (calOverlay && calModal) {
+                    // Reset calibration state
+                    if (window.resetCalibration) window.resetCalibration();
+                    calOverlay.hidden = false;
+                    calModal.hidden = false;
+                    document.body.style.overflow = 'hidden';
+                }
+            }
         } catch (e) {
             alert(e.message || 'Sign up failed');
         }
@@ -227,6 +296,116 @@
             try { localStorage.setItem('hasVisited', '1'); } catch (e) {}
         });
     }
+
+    // Calibration modal record button - 3 consecutive recordings
+    (function initCalibrationRecord() {
+        const calBtn = document.getElementById('calibrationRecordBtn');
+        const calOverlay = document.getElementById('calibrationOverlay');
+        const calModal = document.getElementById('calibrationModal');
+        const calPrompt = document.getElementById('calibrationPrompt');
+        if (!calBtn) return;
+
+        // Make overlay non-closable
+        if (calOverlay) {
+            calOverlay.addEventListener('click', function(e) {
+                e.stopPropagation(); // prevent closing
+            });
+        }
+
+        // Sound codes for server: 'a', 'e', 'u'
+        // Display texts: "aaa", "eee", "uuu"
+        const soundCodes = ['a', 'e', 'u'];
+        const soundDisplays = ['aaa', 'eee', 'uuu'];
+        let currentIndex = 0;
+        
+        // Expose reset function globally
+        window.resetCalibration = function() {
+            currentIndex = 0;
+            if (calPrompt) calPrompt.textContent = 'Say "' + soundDisplays[0] + '"';
+        };
+        let mediaRecorder;
+        let chunks = [];
+        let currentStream = null;
+
+        async function uploadCalibrationRecording(blob, soundCode) {
+            try {
+                const userid = parseInt(sessionStorage.getItem('userid') || '0');
+                if (!userid) {
+                    console.error('No userid found');
+                    return;
+                }
+                
+                const formData = new FormData();
+                formData.append('audio', blob, `calibration_${soundCode}.webm`);
+                formData.append('sound', soundCode);
+                formData.append('userid', userid.toString());
+
+                await fetch('/api/calibration', {
+                    method: 'POST',
+                    body: formData
+                });
+            } catch (err) {
+                console.error('Failed to upload calibration recording:', err);
+            }
+        }
+
+        async function startCalibrationRecording() {
+            if (currentIndex >= soundCodes.length) return;
+            
+            chunks = [];
+            calBtn.disabled = true;
+            calBtn.classList.add('recording');
+            calBtn.setAttribute('aria-pressed', 'true');
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                currentStream = stream;
+                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+                mediaRecorder.onstop = async () => {
+                    const blob = new Blob(chunks, { type: 'audio/webm' });
+                    const soundCode = soundCodes[currentIndex];
+                    
+                    // Upload to server with sound code ('a', 'e', 'u')
+                    await uploadCalibrationRecording(blob, soundCode);
+                    
+                    calBtn.disabled = false;
+                    calBtn.classList.remove('recording');
+                    calBtn.setAttribute('aria-pressed', 'false');
+                    stream.getTracks().forEach(t => t.stop());
+                    
+                    currentIndex++;
+                    
+                    if (currentIndex < soundCodes.length) {
+                        // Show next prompt with display text
+                        if (calPrompt) {
+                            calPrompt.textContent = 'Say "' + soundDisplays[currentIndex] + '"';
+                        }
+                    } else {
+                        // All recordings done - close modal
+                        if (calOverlay) calOverlay.hidden = true;
+                        if (calModal) calModal.hidden = true;
+                        document.body.style.overflow = '';
+                        // Reset for next time
+                        currentIndex = 0;
+                        if (calPrompt) calPrompt.textContent = 'Say "' + soundDisplays[0] + '"';
+                    }
+                };
+                mediaRecorder.start();
+                setTimeout(() => mediaRecorder.stop(), 3000);
+            } catch (err) {
+                calBtn.disabled = false;
+                calBtn.classList.remove('recording');
+                calBtn.setAttribute('aria-pressed', 'false');
+                if (currentStream) {
+                    currentStream.getTracks().forEach(t => t.stop());
+                    currentStream = null;
+                }
+            }
+        }
+
+        calBtn.addEventListener('click', startCalibrationRecording);
+    })();
 })();
 
 

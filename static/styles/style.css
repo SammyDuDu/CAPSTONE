@@ -1,6 +1,5 @@
 /* Design tokens */
 :root {
-    /* Colors - keep warm, earthy palette */
     --color-bg: #efe5da;
     --color-surface: #ffffff;
     --color-surface-soft: #fffaf5;
@@ -28,7 +27,7 @@
     --space-7: 20px;
 
     /* Component sizes */
-    --card-size: clamp(92px, 18vw, 120px); /* ~25% smaller than earlier ~160px */
+    --card-size: clamp(110px, 22vw, 140px); /* Increased for better visibility */
 
     /* Motion & easing */
     --easing-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -82,6 +81,7 @@ body {
 .brand {
     font-weight: 700;
     letter-spacing: 1px;
+    font-size: 26px; /* +10px from typical default ~16px */
 }
 
 .left-side, .right-side {
@@ -106,8 +106,6 @@ body {
 .nav-chip:hover { transform: translateY(-1px); box-shadow: var(--shadow-md); background: #fff; }
 .nav-chip:focus-visible { outline: 2px solid rgba(255,255,255,0.8); outline-offset: 2px; }
 
-/* removed .progress-btn (no longer used) */
-
 .login-btn {
     background: var(--color-surface);
     font-size: 18px;
@@ -127,7 +125,6 @@ body {
     max-width: 1000px;
     margin: 0 auto;
 }
-/* Reduce top spacing between topbar and first section by ~1/3 */
 .content { padding-top: clamp(12px, 2.7vw, 19px); }
 
 /* Modal */
@@ -164,7 +161,11 @@ body {
     cursor: pointer;
 }
 .modal-title { font-weight: bold; margin-bottom: 8px; padding-right: 24px; }
+.calibration-prompt { text-align: center; font-size: inherit; font-weight: bold; margin-bottom: var(--space-4); }
+#calibrationModal .modal-title { text-align: center; }
 .modal-body { display: flex; flex-direction: column; gap: var(--space-2); }
+.modal-body label { display: block; margin-bottom: 4px; }
+.modal-body .input { width: 100%; box-sizing: border-box; }
 .input { padding: var(--space-2); border: 1px solid var(--color-accent); border-radius: 4px; background: var(--color-surface); }
 .input:focus { outline: 2px solid rgba(160, 121, 88, 0.35); outline-offset: 2px; }
 .modal-actions { display: flex; gap: var(--space-3); margin-top: var(--space-3); }
@@ -282,10 +283,10 @@ body {
     border-radius: 8px;
     margin-bottom: var(--space-3);
 }
-.card-title { font-size: 15px; font-weight: 600; }
+.card-title { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; width: 100%; text-align: center; }
 /* Place total card in bottom-middle cell (column 3 of 5) */
 .card.total { align-items: center; justify-content: center; grid-column: 3; grid-row: 2; flex-direction: column; }
-.card.total .percent { font-weight: 800; font-size: clamp(28px, 6vw, 40px); min-height: 30px; display: flex; align-items: center; justify-content: center; width: 100%; }
+.card.total .percent { font-weight: 800; font-size: clamp(20px, 4.5vw, 30px); min-height: 30px; display: flex; align-items: center; justify-content: center; width: 100%; }
 /* Slightly larger 'total' label */
 .card.total .card-title { font-size: 21px; font-weight: 700; }
 
@@ -337,6 +338,13 @@ body {
     animation: fade-in var(--duration-slow) var(--easing-standard) both;
 }
 .first-visit-banner .banner-text { margin-right: 28px; }
+/* User created banner - auto width to fit content */
+#userCreatedBanner {
+    width: auto;
+    min-width: 200px;
+    padding: var(--space-4) var(--space-6);
+}
+#userCreatedBanner .banner-text { margin-right: 0; text-align: center; }
 .first-visit-banner .banner-close {
     position: absolute;
     top: 8px;
@@ -347,3 +355,8 @@ body {
     font-size: 16px;
     cursor: pointer;
 }
+/* Calibration modal - no close button, overlay doesn't close */
+#calibrationModal .modal-close { display: none; }
+#calibrationOverlay { cursor: default; }
+#calibrationModal .modal-body { align-items: center; }
+#calibrationModal .record-btn { margin: var(--space-4) auto; }

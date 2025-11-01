@@ -20,31 +20,51 @@
             mediaRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
             mediaRecorder.onstop = async () => {
                 const blob = new Blob(chunks, { type: 'audio/webm' });
-                window.lastRecording = blob; // available for later upload
+                window.lastRecording = blob;
                 btn.disabled = false;
                 btn.classList.remove('recording');
                 btn.setAttribute('aria-pressed', 'false');
                 // stop tracks to release mic
                 stream.getTracks().forEach(t => t.stop());
 
-                // Generate a random progress value 0..100
-                const randomProgress = Math.floor(Math.random() * 101);
-                // Update the UI percent box
-                if (percentEl) {
-                    percentEl.textContent = randomProgress + '%';
-                }
-                // Send to backend if logged in
+                // Send audio to server for analysis
                 try {
-                    const username = sessionStorage.getItem('username');
+                    const userid = parseInt(sessionStorage.getItem('userid') || '0');
                     const sound = localStorage.getItem('selectedSound') || (document.getElementById('soundSymbol')?.textContent || '').trim();
-                    if (username && sound) {
-                        await fetch('/api/update-progress', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ username, sound, progress: randomProgress })
-                        });
+                    
+                    if (!sound) {
+                        console.warn('Cannot analyze: missing sound');
+                        return;
                     }
-                } catch (_) { /* ignore */ }
+                    
+                    const formData = new FormData();
+                    formData.append('audio', blob, `recording_${sound}.webm`);
+                    formData.append('sound', sound);
+                    
+                    // Use guest endpoint if not logged in, otherwise use logged-in endpoint
+                    const endpoint = userid ? '/api/analyze-sound' : '/api/analyze-sound-guest';
+                    if (userid) {
+                        formData.append('userid', userid.toString());
+                    }
+                    
+                    const response = await fetch(endpoint, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        const result = data.result || 0;
+                        // Update the UI percent box with analysis result
+                        if (percentEl) {
+                            percentEl.textContent = result + '%';
+                        }
+                    } else {
+                        console.error('Analysis failed:', await response.text());
+                    }
+                } catch (err) {
+                    console.error('Failed to send recording for analysis:', err);
+                }
             };
             mediaRecorder.start();
             setTimeout(() => mediaRecorder.stop(), 3000);

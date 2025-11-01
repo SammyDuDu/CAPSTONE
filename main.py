@@ -130,7 +130,13 @@ async def auth_login(creds: AuthCredentials):
             user = cur.fetchone()
             if user is None:
                 raise HTTPException(status_code=401, detail="Invalid credentials")
-    return {"ok": True, "message": "Login successful", "user": user[1]}
+            user_id = user[0]
+            username = user[1]
+            # Check if calibration is complete (has all 3 sounds: 'a', 'e', 'u')
+            cur.execute("SELECT COUNT(DISTINCT sound) FROM formants WHERE userid = %s AND sound IN ('a', 'e', 'u')", (user_id,))
+            cal_count = cur.fetchone()[0] or 0
+            calibration_complete = (cal_count >= 3)
+    return {"ok": True, "message": "Login successful", "user": username, "userid": user_id, "calibration_complete": calibration_complete}
 
 
 class ChangePasswordPayload(BaseModel):
@@ -164,66 +170,144 @@ async def get_progress(username: str):
     return {"progress": result}
 
 
-class UpdateProgressPayload(BaseModel):
-    username: str
-    sound: str  # single bpchar(1)
-    progress: int  # 0..100
-
-
-@app.post("/api/update-progress")
-async def update_progress(payload: UpdateProgressPayload):
-    """Upsert user's progress for a sound. Keeps the maximum progress value.
-    If user or sound is invalid, returns 404.
-    """
-    sound = (payload.sound or "").strip()
-    if not payload.username or not sound or not isinstance(payload.progress, int):
-        raise HTTPException(status_code=400, detail="Invalid payload")
-    value = max(0, min(100, int(payload.progress)))
-
+@app.get("/api/formants")
+async def get_formants(userid: int):
     with connect(DB_URL, sslmode="require") as conn:
         with conn.cursor() as cur:
-            # Find user id
-            cur.execute("SELECT id FROM users WHERE username = %s", (payload.username,))
-            row = cur.fetchone()
-            if row is None:
+            # Verify user exists
+            cur.execute("SELECT id FROM users WHERE id = %s", (userid,))
+            if cur.fetchone() is None:
                 raise HTTPException(status_code=404, detail="User not found")
-            user_id = row[0]
+            
+            # Get formants for all sounds for this user
+            cur.execute(
+                "SELECT sound, f1_mean, f1_std, f2_mean, f2_std FROM formants WHERE userid = %s",
+                (userid,)
+            )
+            items = cur.fetchall() or []
+            
+            # Format as dictionary: { sound: { f1_mean, f1_std, f2_mean, f2_std }, ... }
+            result = {}
+            for row in items:
+                sound = row[0].strip() if row[0] else None
+                if sound:
+                    result[sound] = {
+                        "f1_mean": float(row[1]) if row[1] is not None else None,
+                        "f1_std": float(row[2]) if row[2] is not None else None,
+                        "f2_mean": float(row[3]) if row[3] is not None else None,
+                        "f2_std": float(row[4]) if row[4] is not None else None
+                    }
+    
+    return {"userid": userid, "formants": result}
 
-            # Try update first
+
+# Removed /api/update-progress - progress is now updated in the analysis endpoints
+
+
+@app.post("/api/calibration")
+async def calibration_upload(
+    audio: UploadFile,
+    sound: Annotated[str, Form()],
+    userid: Annotated[int, Form()]
+):
+    if not audio.filename:
+        raise HTTPException(status_code=400, detail="No audio file provided.")
+    
+    # Validate sound is one of the expected calibration sounds
+    if sound not in ['a', 'e', 'u']:
+        raise HTTPException(status_code=400, detail="Invalid calibration sound. Expected: 'a', 'e', or 'u'")
+    
+    # TODO: Store calibration audio file for this user
+    # For now, store a record that calibration was completed for this sound
+    # You may want to save the actual audio file to disk or store as blob
+    with connect(DB_URL, sslmode="require") as conn:
+        with conn.cursor() as cur:
+            # Check if user exists
+            cur.execute("SELECT id FROM users WHERE id = %s", (userid,))
+            if cur.fetchone() is None:
+                raise HTTPException(status_code=404, detail="User not found")
+            
+            # Read audio file content
+            audio_content = await audio.read()
+
+            #TODO: analyze the recording and get the formants
+            f1mean = 500
+            f2mean = 1500
+            f1std = 100
+            f2std = 200
+            
+            # Upsert calibration record
+            # Note: If table has constraint, use ON CONFLICT; otherwise use DELETE + INSERT
+            cur.execute("DELETE FROM formants WHERE userid = %s AND sound = %s", (userid, sound))
+            cur.execute(
+                "INSERT INTO formants (userid, sound, f1_mean, f2_mean, f1_std, f2_std) VALUES (%s, %s, %s, %s, %s, %s)",
+                (userid, sound, f1mean, f2mean, f1std, f2std)
+            )
+            conn.commit()
+    
+    return {
+        "ok": True,
+        "message": f"Calibration recording for '{sound}' saved",
+        "sound": sound,
+        "userid": userid
+    }
+
+
+@app.post("/api/analyze-sound")
+async def analyze_sound(
+    audio: UploadFile,
+    userid: Annotated[int, Form()],
+    sound: Annotated[str, Form()]
+):
+    if not audio.filename:
+        raise HTTPException(status_code=400, detail="No audio file provided.")
+    
+    # Validate user exists
+    with connect(DB_URL, sslmode="require") as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM users WHERE id = %s", (userid,))
+            if cur.fetchone() is None:
+                raise HTTPException(status_code=404, detail="User not found")
+    
+    # TODO: Perform actual audio analysis here
+    # For now, return hardcoded 80%
+    result = 80
+    
+    # Update progress in database with the analysis result
+    with connect(DB_URL, sslmode="require") as conn:
+        with conn.cursor() as cur:
             cur.execute(
                 "UPDATE progress SET progress = GREATEST(progress, %s) WHERE userid = %s AND sound = %s",
-                (value, user_id, sound)
+                (result, userid, sound)
             )
             if cur.rowcount == 0:
                 # Insert if no existing row
                 cur.execute(
                     "INSERT INTO progress (userid, sound, progress) VALUES (%s, %s, %s)",
-                    (user_id, sound, value)
+                    (userid, sound, result)
                 )
             conn.commit()
-    return {"ok": True, "message": "Progress updated", "sound": sound, "progress": value}
-
-
-@app.post("/api/analyze-vowel")
-async def analyze_vowel(
-    audio: UploadFile,
-    target: Annotated[str, Form()]
-):
-    """
-    Handles the audio file upload (UploadFile) and target vowel (Form data).
-    This function currently mocks the acoustic analysis.
-    """
     
+    return {
+        "userid": userid,
+        "sound": sound,
+        "result": result
+    }
+
+
+@app.post("/api/analyze-sound-guest")
+async def analyze_sound_guest(
+    audio: UploadFile,
+    sound: Annotated[str, Form()]
+):
     if not audio.filename:
         raise HTTPException(status_code=400, detail="No audio file provided.")
     
-    # --- MOCK ANALYSIS ---
-    time.sleep(1) # Simulate processing time
-    simulated_score = random.randint(50, 99)
+    # TODO: Perform actual audio analysis here
+    # For now, return hardcoded 80%
+    result = 80
     
-    # Return the result in a JSON package
     return {
-        "score": simulated_score,
-        "target_vowel": target,
-        "feedback": f"Mock analysis complete. Target vowel was '{target}'.",
+        "sound": sound,
+        "result": result
     }
