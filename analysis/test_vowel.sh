@@ -3,86 +3,100 @@
 # --- Configuration ---
 
 # 1. Python script to execute
-# (Assumes vowel_analyzer_server.py is in the same 'analysis' folder)
-PYTHON_SCRIPT="vowel_v1.py"
+# (update this to match your actual filename)
+PYTHON_SCRIPT="vowel_v2.py"
 
 # 2. Input directory containing the audio files
-# (Assumes 'sample/vowel_man' is in the parent directory)
-AUDIO_DIR="../sample/vowel_man"
+# Pass a different directory as the first argument if needed
+DEFAULT_AUDIO_DIR="../sample/check_vowel"
+AUDIO_DIR="${1:-$DEFAULT_AUDIO_DIR}"
 
 # 3. Output directory to save the resulting images
 OUTPUT_DIR="./output"
 
-# --- Script Start ---
+echo "Starting KoSPA vowel batch test..."
+echo "Using audio directory: $AUDIO_DIR"
 
-echo "Starting vowel analysis test script..."
-
-# 1. Create the output directory if it doesn't exist
+# Create output dir
 mkdir -p "$OUTPUT_DIR"
 echo "Output directory ensured at: $OUTPUT_DIR"
 
-# 2. List of files to test (Korean filenames)
-# (Ensure these files actually exist at the AUDIO_DIR path)
-FILES=("아.wav" "이.wav" "우.wav" "오.wav" "으.wav" "어.wav" "애.wav")
+# 4. List of vowel recordings to process.
+# ⚠ Update these names to match the actual (possibly Korean) filenames in your folder.
+FILES=("아" "어" "오" "우" "으" "이" "애" "에" "외" "위")
 
-# 3. Loop through each file and run the Python script
-for file in "${FILES[@]}"
-do
-    # Based on the filename (e.g., "아.wav"), determine the
-    # Python argument ("a (아)") and the output filename ("a").
+for file in "${FILES[@]}"; do
+    # Map: filename (Korean) -> model argument key + output prefix
     case "$file" in
-        "아.wav")
+        "아")
             base_name="a"
             vowel_key="a (아)"
             ;;
-        "이.wav")
-            base_name="i"
-            vowel_key="i (이)"
-            ;;
-        "우.wav")
-            base_name="u"
-            vowel_key="u (우)"
-            ;;
-        "오.wav")
-            base_name="o"
-            vowel_key="o (오)"
-            ;;
-        "으.wav")
-            base_name="eu"
-            vowel_key="eu (으)"
-            ;;
-        "어.wav")
+        "어")
             base_name="eo"
             vowel_key="eo (어)"
             ;;
-        "애.wav")
+        "오")
+            base_name="o"
+            vowel_key="o (오)"
+            ;;
+        "우")
+            base_name="u"
+            vowel_key="u (우)"
+            ;;
+        "으")
+            base_name="eu"
+            vowel_key="eu (으)"
+            ;;
+        "이")
+            base_name="i"
+            vowel_key="i (이)"
+            ;;
+        "애")
             base_name="ae"
             vowel_key="ae (애)"
             ;;
+        "에")
+            base_name="e"
+            vowel_key="e (에)"
+            ;;
+        "외")
+            base_name="oe"
+            vowel_key="oe (외)"
+            ;;
+        "위")
+            base_name="wi"
+            vowel_key="wi (위)"
+            ;;
         *)
-            echo "Skipping unknown file: $file"
+            echo "Skipping unknown file key: $file"
             continue
             ;;
     esac
 
-    # 4. Define command arguments
-    INPUT_FILE="$AUDIO_DIR/$file"
-    INTENDED_VOWEL="$vowel_key" # 🌟 Pass the vowel key in quotes to handle spaces and parentheses
-    OUTPUT_IMAGE="$OUTPUT_DIR/${base_name}_result.png" # Example: ./output/a_result.png
+    # 5. Locate the actual audio file (supports .wav / .m4a / .mp3)
+    INPUT_FILE=""
+    for ext in wav m4a mp3; do
+        candidate="$AUDIO_DIR/$file.$ext"
+        if [ -f "$candidate" ]; then
+            INPUT_FILE="$candidate"
+            break
+        fi
+    done
 
-    # 5. Check if the input file exists
-    if [ ! -f "$INPUT_FILE" ]; then
-        echo "Error: Input file not found at $INPUT_FILE. Skipping."
+    if [ -z "$INPUT_FILE" ]; then
+        echo "❌ Error: No audio found for '$file' in $AUDIO_DIR (tried .wav .m4a .mp3). Skipping."
         continue
     fi
 
-    # 6. Execute the Python script
+    OUTPUT_IMAGE="$OUTPUT_DIR/${base_name}_result.png"
+
     echo "-------------------------------------"
-    echo "Testing: $file (Target: $INTENDED_VOWEL)"
-    
-    python "$PYTHON_SCRIPT" "$INPUT_FILE" "$INTENDED_VOWEL" "$OUTPUT_IMAGE"
-    
-    echo "Test for $file complete. Image saved to $OUTPUT_IMAGE"
+    echo "▶ Testing: $(basename "$INPUT_FILE") (Target: $vowel_key)"
+
+    python "$PYTHON_SCRIPT" "$INPUT_FILE" "$vowel_key" "$OUTPUT_IMAGE"
+
+    echo "✅ Done: $file -> $OUTPUT_IMAGE"
     echo "-------------------------------------"
 done
 

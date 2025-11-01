@@ -1,259 +1,175 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+KoSPA: Korean Speech Pronunciation Analyzer
+Improved version with quantitative scoring and F3 metric support.
+"""
+
 import parselmouth
 import numpy as np
 import os
 import sys
 import subprocess
 import matplotlib
-# 🌟 [MODIFIED] Use 'Agg' backend for non-GUI server environments
-matplotlib.use('Agg') 
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
-import matplotlib.font_manager as fm # For Korean font detection
 
-# --- 0. Korean Font Setup (for bilingual chart labels) ---
-# This block tries to find a Korean font (NanumGothic) installed on the system (e.g., in the Docker container).
-# If found, it uses it to display 'a (아)'. If not, it defaults to English fonts.
+# --- 0. Korean Font Setup ---
 try:
     plt.rc('font', family='NanumGothic')
-    # 🌟 [MODIFIED] All printouts are in English.
-    print("Korean font (NanumGothic) found. Using for bilingual labels.")
+    print("✅ Korean font (NanumGothic) found.")
 except:
-    print("Korean font not found. Chart labels may not display Korean characters.")
-    pass # If font is not found, it will use the default English font.
+    print("⚠️ Korean font not found. Labels may not display properly.")
+    pass
 
-# --- 1. Baseline Formant Data (Based on Table 2) ---
-# These dictionaries store the average (f1, f2) and standard deviation (f1_sd, f2_sd)
-# for standard Korean vowels, separated by male and female speakers.
-# The keys are bilingual (Romanization + Korean) for clarity.
-
+# --- 1. Baseline Formant Data ---
 STANDARD_MALE_FORMANTS = {
-    'a (아)': {'f1': 651, 'f2': 1156, 'f1_sd': 136, 'f2_sd': 77},
-    'i (이)': {'f1': 236, 'f2': 2183, 'f1_sd': 30,  'f2_sd': 136},
-    'u (우)': {'f1': 324, 'f2': 595,  'f1_sd': 43,  'f2_sd': 140},
-    'o (오)': {'f1': 320, 'f2': 587,  'f1_sd': 56,  'f2_sd': 132},
-    'eu (으)': {'f1': 317, 'f2': 1218, 'f1_sd': 27,  'f2_sd': 155},
-    'eo (어)': {'f1': 445, 'f2': 845,  'f1_sd': 103, 'f2_sd': 149},
-    'ae (애)': {'f1': 415, 'f2': 1848, 'f1_sd': 56,  'f2_sd': 99}
+    'a (아)': {'f1': 651, 'f2': 1156, 'f3': 2500, 'f1_sd': 136, 'f2_sd': 77},
+    'i (이)': {'f1': 236, 'f2': 2183, 'f3': 3010, 'f1_sd': 30,  'f2_sd': 136},
+    'u (우)': {'f1': 324, 'f2': 595,  'f3': 2400, 'f1_sd': 43,  'f2_sd': 140},
+    'o (오)': {'f1': 320, 'f2': 587,  'f3': 2300, 'f1_sd': 56,  'f2_sd': 132},
+    'eu (으)': {'f1': 317, 'f2': 1218, 'f3': 2600, 'f1_sd': 27,  'f2_sd': 155},
+    'eo (어)': {'f1': 445, 'f2': 845,  'f3': 2500, 'f1_sd': 103, 'f2_sd': 149},
+    'ae (애)': {'f1': 415, 'f2': 1848, 'f3': 2800, 'f1_sd': 56,  'f2_sd': 99}
 }
 
 STANDARD_FEMALE_FORMANTS = {
-    'a (아)': {'f1': 945, 'f2': 1582, 'f1_sd': 83, 'f2_sd': 141},
-    'i (이)': {'f1': 273, 'f2': 2864, 'f1_sd': 22, 'f2_sd': 109},
-    'u (우)': {'f1': 346, 'f2': 810,  'f1_sd': 28, 'f2_sd': 106},
-    'o (오)': {'f1': 371, 'f2': 700,  'f1_sd': 25, 'f2_sd': 72},
-    'eu (으)': {'f1': 390, 'f2': 1752, 'f1_sd': 34, 'f2_sd': 191},
-    'eo (어)': {'f1': 576, 'f2': 961,  'f1_sd': 78, 'f2_sd': 87},
-    'ae (애)': {'f1': 545, 'f2': 2436, 'f1_sd': 21, 'f2_sd': 95}
+    'a (아)': {'f1': 945, 'f2': 1582, 'f3': 3200, 'f1_sd': 83, 'f2_sd': 141},
+    'i (이)': {'f1': 273, 'f2': 2864, 'f3': 3400, 'f1_sd': 22, 'f2_sd': 109},
+    'u (우)': {'f1': 346, 'f2': 810,  'f3': 2700, 'f1_sd': 28, 'f2_sd': 106},
+    'o (오)': {'f1': 371, 'f2': 700,  'f3': 2600, 'f1_sd': 25, 'f2_sd': 72},
+    'eu (으)': {'f1': 390, 'f2': 1752, 'f3': 2900, 'f1_sd': 34, 'f2_sd': 191},
+    'eo (어)': {'f1': 576, 'f2': 961,  'f3': 2700, 'f1_sd': 78, 'f2_sd': 87},
+    'ae (애)': {'f1': 545, 'f2': 2436, 'f3': 3100, 'f1_sd': 21, 'f2_sd': 95}
 }
 
-# F0 (Pitch) threshold to guess gender. (1650 was a typo, 165 is correct)
-# F0 > 165 Hz is generally classified as Female.
-# F0 < 165 Hz is generally classified as Male.
-F0_GENDER_THRESHOLD = 165.0 # Hz
+F0_GENDER_THRESHOLD = 165.0  # Hz
 
-# --- 2. Audio Conversion Function ---
+# --- 2. Audio Conversion ---
 def convert_to_wav(input_file, output_file):
-    """
-    Converts any audio file (like .m4a) to a mono, 44.1kHz WAV file using ffmpeg.
-    ffmpeg must be installed in the server/Docker environment.
-    """
     try:
-        # Command: ffmpeg -i <input> -y (overwrite) -ac 1 (mono) -ar 44100 (sample rate) <output>
-        subprocess.run(['ffmpeg', '-i', input_file, '-y', '-ac', '1', '-ar', '44100', output_file], 
-                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            ['ffmpeg', '-i', input_file, '-y', '-ac', '1', '-ar', '44100', output_file],
+            check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
         return True
     except Exception as e:
-        print(f"Error converting file with ffmpeg: {e}")
+        print(f"Error converting file: {e}")
         return False
 
-# --- 3. Core Audio Analysis Function ---
+# --- 3. Formant & Pitch Analysis ---
 def analyze_vowel_and_pitch(wav_file_path):
-    """
-    Analyzes a WAV file and extracts the average F0 (pitch), F1, and F2 (formants).
-    """
     try:
         snd = parselmouth.Sound(wav_file_path)
         duration = snd.get_total_duration()
-        if duration < 0.2: 
-            print(f"Error: Audio file is too short (< 0.2s) - {duration:.2f}s")
-            return None, None, None
-            
-        # Analyze the middle 50% of the sound to avoid unstable start/end sounds
-        start_time = duration * 0.25
-        end_time = duration * 0.75
-        snd_part = snd.extract_part(from_time=start_time, to_time=end_time)
+        if duration < 0.2:
+            print(f"Audio too short ({duration:.2f}s)")
+            return None, None, None, None
 
-        # 1. Extract F0 (Pitch)
+        snd_part = snd.extract_part(from_time=duration*0.25, to_time=duration*0.75)
         pitch = snd_part.to_pitch(pitch_floor=75.0, pitch_ceiling=500.0)
         pitch_values = pitch.selected_array['frequency']
-        # Calculate mean, ignoring unvoiced (0 Hz) frames
-        f0_mean = np.mean([f for f in pitch_values if f > 0])
-        
-        # If no pitch is found in the middle part, try the whole audio
-        if np.isnan(f0_mean) or f0_mean == 0: 
-            pitch_full = snd.to_pitch(pitch_floor=75.0, pitch_ceiling=500.0)
-            pitch_values_full = pitch_full.selected_array['frequency']
-            f0_mean = np.mean([f for f in pitch_values_full if f > 0])
-            
-        # 2. Extract F1 & F2 (Formants)
-        formant = snd_part.to_formant_burg(maximum_formant=5500.0)
-        
-        f1_values = []
-        f2_values = []
-        # Iterate over all time frames in the Formant object
-        for frame in range(1, formant.n_frames + 1):
-            time = formant.get_time_from_frame_number(frame)
-            # Get F1 (formant 1) and F2 (formant 2) at that specific time
-            f1_val = formant.get_value_at_time(formant_number=1, time=time)
-            f1_values.append(f1_val)
-            f2_val = formant.get_value_at_time(formant_number=2, time=time)
-            f2_values.append(f2_val)
+        f0_mean = np.mean([f for f in pitch_values if f > 0]) or np.nan
 
-        # Calculate mean, ignoring NaN (Not a Number) values
+        formant = snd_part.to_formant_burg(maximum_formant=5500.0)
+        f1_values, f2_values, f3_values = [], [], []
+        for frame in range(1, formant.n_frames + 1):
+            t = formant.get_time_from_frame_number(frame)
+            f1_values.append(formant.get_value_at_time(1, t))
+            f2_values.append(formant.get_value_at_time(2, t))
+            f3_values.append(formant.get_value_at_time(3, t))
+
         f1_mean = np.nanmean(f1_values)
         f2_mean = np.nanmean(f2_values)
+        f3_mean = np.nanmean(f3_values)
 
-        if np.isnan(f0_mean) or np.isnan(f1_mean) or np.isnan(f2_mean) or f0_mean == 0:
-            print("Error: Could not extract valid F0/F1/F2.")
-            return None, None, None
+        if any(np.isnan(v) for v in [f0_mean, f1_mean, f2_mean]):
+            return None, None, None, None
 
-        return f1_mean, f2_mean, f0_mean
+        return f1_mean, f2_mean, f3_mean, f0_mean
     except Exception as e:
-        print(f"Error during analysis: {e}")
-        return None, None, None
+        print(f"Error: {e}")
+        return None, None, None, None
 
-# --- 4. Feedback Generation Function ---
-def get_feedback(intended_vowel, measured_f1, measured_f2, standard_data):
-    """
-    Compares measured formants to standard data and generates English feedback.
-    """
-    if intended_vowel not in standard_data:
-        return f"Error: No standard data for '{intended_vowel}'. Make sure vowel is specified like 'a (아)'."
-        
-    standard = standard_data[intended_vowel]
-    std_f1, std_f2 = standard['f1'], standard['f2']
-    # Set tolerance to 50% of the standard deviation
-    f1_tolerance, f2_tolerance = standard['f1_sd'] * 0.5, standard['f2_sd'] * 0.5
-    feedback = []
+# --- 4. Scoring Function ---
+def compute_score(measured_f1, measured_f2, measured_f3, intended_vowel, standard_data):
+    std = standard_data[intended_vowel]
+    f1_z = abs(measured_f1 - std['f1']) / std['f1_sd']
+    f2_z = abs(measured_f2 - std['f2']) / std['f2_sd']
+    z_avg = (f1_z + f2_z) / 2.0
+    # Optional F3 weight (10% influence)
+    if 'f3' in std and measured_f3:
+        f3_z = abs(measured_f3 - std['f3']) / 400.0  # normalize
+        z_avg = (z_avg * 0.9) + (f3_z * 0.1)
+    score = max(0, min(100, int(100 - (z_avg * 33))))
+    return score
 
-    # F1 (Tongue Height): High F1 = Low Tongue
-    if measured_f1 > std_f1 + f1_tolerance:
-        feedback.append(f"Tongue position is lower (more open) than standard '{intended_vowel}'. Try raising your tongue.")
-    elif measured_f1 < std_f1 - f1_tolerance:
-        feedback.append(f"Tongue position is higher (more closed) than standard '{intended_vowel}'. Try lowering your tongue.")
+# --- 5. Feedback ---
+def get_feedback(vowel, f1, f2, std_data):
+    std = std_data[vowel]
+    fb = []
+    tol1, tol2 = std['f1_sd']*0.5, std['f2_sd']*0.5
+    if f1 > std['f1'] + tol1:
+        fb.append("Tongue lower than standard → try raising it.")
+    elif f1 < std['f1'] - tol1:
+        fb.append("Tongue too high → try lowering it.")
+    if f2 > std['f2'] + tol2:
+        fb.append("Tongue too front → pull it back slightly.")
+    elif f2 < std['f2'] - tol2:
+        fb.append("Tongue too back → move it forward.")
+    if not fb:
+        return "Excellent! 👏 Very close to standard pronunciation."
+    return " ".join(fb)
 
-    # F2 (Tongue Backness): High F2 = Front Tongue
-    if measured_f2 > std_f2 + f2_tolerance:
-        feedback.append(f"Tongue position is more front than standard '{intended_vowel}'. Try pulling your tongue back slightly.")
-    elif measured_f2 < std_f2 - f2_tolerance:
-        feedback.append(f"Tongue position is more back than standard '{intended_vowel}'. Try pushing your tongue forward.")
-
-    if not feedback:
-        return "Excellent! 👏 Your pronunciation is very close to the standard."
-
-    return " ".join(feedback)
-
-# --- 5. Chart Plotting Function ---
-def plot_vowel_space(measured_f1, measured_f2, intended_vowel, standard_data, gender_text, output_image_path):
-    """
-    Generates the F1/F2 vowel space chart and saves it to a file.
-    All labels and titles are in English, but vowel keys are bilingual.
-    """
-    fig, ax = plt.subplots(figsize=(10, 8))
-    
-    # 1. Plot all standard vowels as a grey 'x' background
-    for vowel, coords in standard_data.items():
-        ax.scatter(coords['f2'], coords['f1'], s=100, c='lightgray', marker='x')
-        ax.text(coords['f2'] + 10, coords['f1'] + 10, vowel, color='gray', fontsize=12)
-
-    # 2. Plot the target vowel (green circle)
-    target_coords = standard_data[intended_vowel]
-    ax.scatter(target_coords['f2'], target_coords['f1'], s=250, c='green', alpha=0.7, label=f"Target '{intended_vowel}' Vowel")
-    
-    # 3. Plot the 1-Sigma Ellipse (visual target area)
-    std_f1, std_f2 = target_coords['f1_sd'], target_coords['f2_sd']
-    ellipse = Ellipse((target_coords['f2'], target_coords['f1']), width=std_f2 * 2, height=std_f1 * 2, angle=0, color='green', alpha=0.15, zorder=0, label="1-Sigma Range (Target)")
+# --- 6. Visualization ---
+def plot_vowel_space(f1, f2, vowel, std_data, gender, out_img):
+    fig, ax = plt.subplots(figsize=(10,8))
+    for v, c in std_data.items():
+        ax.scatter(c['f2'], c['f1'], c='lightgray', marker='x', s=100)
+        ax.text(c['f2']+10, c['f1']+10, v, color='gray')
+    t = std_data[vowel]
+    ax.scatter(t['f2'], t['f1'], c='green', s=250, label='Target Vowel')
+    ellipse = Ellipse((t['f2'], t['f1']), t['f2_sd']*2, t['f1_sd']*2, color='green', alpha=0.2)
     ax.add_patch(ellipse)
-    
-    # 4. Plot the measured vowel (red circle)
-    ax.scatter(measured_f2, measured_f1, s=250, c='red', alpha=0.7, label="Measured Vowel (You)")
-    
-    # 5. Set chart titles and labels (All English)
-    ax.set_title(f"Vowel Space Analysis (Assumed Gender: {gender_text})", fontsize=16)
-    ax.set_xlabel("F2 (Hz) - Tongue Backness (← Front / Back →)", fontsize=12)
-    ax.set_ylabel("F1 (Hz) - Tongue Height (← High / Low →)", fontsize=12)
-    
-    # Invert axes to match phonetic standards
-    ax.invert_yaxis() # Low F1 (High Tongue) is at the top
-    ax.invert_xaxis() # High F2 (Front Tongue) is at the left
-    
-    ax.legend(fontsize=12)
-    ax.grid(True, linestyle='--', alpha=0.6)
-    
-    # 6. Save figure and close
-    plt.savefig(output_image_path)
-    plt.close(fig) # Close figure to free up memory
-    print(f"Chart saved to {output_image_path}")
+    ax.scatter(f2, f1, c='red', s=250, label='Measured')
+    ax.set_title(f"KoSPA Vowel Space (Gender: {gender})")
+    ax.set_xlabel("F2 (Hz) ← Front / Back →")
+    ax.set_ylabel("F1 (Hz) ← High / Low →")
+    ax.invert_yaxis(); ax.invert_xaxis()
+    ax.legend(); ax.grid(True, linestyle='--', alpha=0.5)
+    plt.savefig(out_img); plt.close(fig)
+    print(f"Chart saved: {out_img}")
 
-# --- 6. Main Execution Block ---
+# --- 7. Main ---
 if __name__ == "__main__":
-    
-    # This script is run from the command line with 3 arguments
     if len(sys.argv) != 4:
-        print("Usage: python vowel_analyzer_server.py <input_audio_file> <intended_vowel> <output_image_path>")
-        print("Example: python vowel_analyzer_server.py input/아.m4a \"a (아)\" output/result.png")
-        print("Available vowels: 'a (아)', 'i (이)', 'u (우)', 'o (오)', 'eu (으)', 'eo (어)', 'ae (애)'")
+        print("Usage: python vowel_analyzer.py <input_audio> <vowel> <output_image>")
         sys.exit(1)
-    
-    input_file = sys.argv[1]
-    intended_vowel = sys.argv[2] # e.g., "a (아)" (must be in quotes if it has a space)
-    output_image_path = sys.argv[3] # e.g., "output/result.png"
-    
-    # 1. Check if input file exists
+    input_file, vowel, out_img = sys.argv[1], sys.argv[2], sys.argv[3]
     if not os.path.exists(input_file):
-        print(f"Error: Input file not found at {input_file}")
-        sys.exit(1)
-        
-    # 2. Convert audio to a temporary WAV file
-    temp_wav = "temp_analysis.wav"
-    if not convert_to_wav(input_file, temp_wav):
-        print("Error: Failed to convert audio to WAV.")
-        sys.exit(1)
+        print("File not found."); sys.exit(1)
+    tmp = "temp.wav"
+    if not convert_to_wav(input_file, tmp):
+        print("Conversion failed."); sys.exit(1)
+    f1, f2, f3, f0 = analyze_vowel_and_pitch(tmp)
+    os.remove(tmp)
+    if not all([f1, f2, f0]):
+        print("Analysis failed."); sys.exit(1)
 
-    # 3. Analyze the WAV file
-    f1, f2, f0 = analyze_vowel_and_pitch(temp_wav)
-    os.remove(temp_wav) # Clean up temporary file
-    
-    if not (f1 and f2 and f0):
-        print("Error: Analysis failed.")
-        sys.exit(1)
-        
-    print(f"Measured F0: {f0:.2f} Hz, F1: {f1:.2f} Hz, F2: {f2:.2f} Hz")
+    gender = "Male" if f0 < F0_GENDER_THRESHOLD else "Female"
+    std_data = STANDARD_MALE_FORMANTS if gender=="Male" else STANDARD_FEMALE_FORMANTS
+    if vowel not in std_data:
+        print(f"Vowel {vowel} not found."); sys.exit(1)
 
-    # 4. Guess gender based on F0 and get feedback
-    if f0 < F0_GENDER_THRESHOLD:
-        gender_text = "Male"
-        standard_data_to_use = STANDARD_MALE_FORMANTS
-    else:
-        gender_text = "Female"
-        standard_data_to_use = STANDARD_FEMALE_FORMANTS
-    print(f"Applying {gender_text} standard.")
-    
-    # 5. Check if the intended vowel is valid before proceeding
-    if intended_vowel not in standard_data_to_use:
-        print(f"Error: Vowel '{intended_vowel}' not found in standard data. Check spelling and format.")
-        print("Available vowels: 'a (아)', 'i (이)', 'u (우)', 'o (오)', 'eu (으)', 'eo (어)', 'ae (애)'")
-        sys.exit(1)
-        
-    feedback = get_feedback(intended_vowel, f1, f2, standard_data_to_use)
-    
-    # 6. Generate plot
-    plot_vowel_space(f1, f2, intended_vowel, standard_data_to_use, gender_text, output_image_path)
-    
-    # 7. Print final feedback for the server to capture
-    print("\n--- 📝 Analysis & Feedback ---")
-    print(feedback)
-    
-    # 8. Print a simple, parsable result for the server
+    score = compute_score(f1, f2, f3, vowel, std_data)
+    feedback = get_feedback(vowel, f1, f2, std_data)
+    plot_vowel_space(f1, f2, vowel, std_data, gender, out_img)
+
+    print(f"\n--- 🧩 Results ---")
+    print(f"F0={f0:.2f}Hz, F1={f1:.1f}Hz, F2={f2:.1f}Hz, F3={f3:.1f}Hz")
+    print(f"Gender: {gender}")
+    print(f"Score: {score}/100")
+    print("Feedback:", feedback)
     print("\n---ANALYSIS_RESULT---")
-    print(feedback)
+    print({"score": score, "feedback": feedback, "gender": gender})

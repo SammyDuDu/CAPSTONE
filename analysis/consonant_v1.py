@@ -265,7 +265,7 @@ if __name__ == "__main__":
         print("Example (for '사'): python consonant_analyzer.py input/사.m4a s")
         print("Example (for '나'): python consonant_analyzer.py input/나.m4a n")
         print("Example (for '라'): python consonant_analyzer.py input/라.m4a r")
-        # 🌟 [수정됨] 사용 가능한 키 목록 업데이트
+        # 🌟 [Updated] refresh the list of available keys
         print("Available keys: g, d, b, j, k, t, p, ch, s, h, n, m, r")
         sys.exit(1)
     
