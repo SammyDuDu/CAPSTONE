@@ -1,0 +1,8 @@
+Global gender guess: Male
+
+아 (a (아)): f1=822.4, f2=1211.5, score=67.1, gender=Male
+어 (eo (어)): f1=674.4, f2=1192.9, score=47.0, gender=Male
+오 (o (오)): f1=462.2, f2=953.2, score=32.7, gender=Male
+우 (u (우)): f1=637.9, f2=1816.4, score=14.1, gender=Male
+으 (eu (으)): f1=654.3, f2=1660.8, score=21.5, gender=Female
+이 (i (이)): f1=374.5, f2=2139.5, score=13.8, gender=Female

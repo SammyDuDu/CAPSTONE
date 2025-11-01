@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # --- Configuration ---
-# This script tests all 14 consonants from '가' to '하'.
-# It maps the Korean filename to the English key required by the Python script.
+# This script tests all 14 consonant files (ga → ha).
+# It maps each Korean filename to the English key required by the Python script.
 
 # 1. Python script to execute
 PYTHON_SCRIPT="consonant_v1.py"
@@ -27,7 +27,7 @@ FILE_KEY_MAP=(
     ["마.m4a"]="m"  # Nasal (Resonance)
     ["바.m4a"]="b"  # Plosive (VOT)
     ["사.m4a"]="s"  # Fricative (Centroid)
-    ["아.m4a"]="vowel" # '아' is a vowel, not a consonant. We will skip it.
+    ["아.m4a"]="vowel" # This vowel file is skipped (handled by vowel_v1.py).
     ["자.m4a"]="j"  # Affricate (VOT)
     ["차.m4a"]="ch" # Affricate (VOT)
     ["카.m4a"]="k"  # Plosive (VOT)
@@ -52,9 +52,9 @@ do
         continue
     fi
 
-    # 4. Skip '아.m4a' as it is a vowel and cannot be analyzed by this script
+    # 4. Skip the vowel file, which is not handled by this script
     if [ "$TARGET_KEY" == "vowel" ]; then
-        echo "Skipping '아.m4a' as it is a vowel. (Use vowel_v1.py for this)."
+        echo "Skipping the vowel file (use vowel_v1.py for this case)."
         continue
     fi
 
