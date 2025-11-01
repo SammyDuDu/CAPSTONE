@@ -1,0 +1,28 @@
+[으] vowel_key=eu (으)
+gender_majority=Female
+mean_f0=179.71 Hz
+mean_f1=654.27 Hz
+mean_f2=1660.79 Hz
+mean_score=21.5 /100
+
+Samples:
+ - 녹음 (8).wav: f0=129.1, f1=407.4, f2=1533.1, score=0, gender=Male
+   feedback: Mouth too closed / tongue too high → lower tongue slightly. Tongue too back → move it slightly forward.
+ - 녹음 (6).wav: f0=222.1, f1=1210.6, f2=1913.3, score=0, gender=Female
+   feedback: Mouth too open / tongue too low → raise tongue slightly. Tongue too front → pull it slightly back.
+ - 녹음 (9).wav: f0=207.2, f1=1172.3, f2=1831.5, score=0, gender=Female
+   feedback: Mouth too open / tongue too low → raise tongue slightly.
+ - 녹음 (2).wav: f0=221.5, f1=452.4, f2=1580.5, score=55, gender=Female
+   feedback: Mouth too open / tongue too low → raise tongue slightly. Tongue too back → move it slightly forward.
+ - 녹음 (5).wav: f0=216.7, f1=1214.6, f2=1783.3, score=0, gender=Female
+   feedback: Mouth too open / tongue too low → raise tongue slightly.
+ - 녹음 (3).wav: f0=158.4, f1=450.8, f2=1577.0, score=0, gender=Male
+   feedback: Mouth too closed / tongue too high → lower tongue slightly. Tongue too back → move it slightly forward.
+ - 녹음 (4).wav: f0=135.2, f1=434.6, f2=1614.9, score=0, gender=Male
+   feedback: Mouth too closed / tongue too high → lower tongue slightly.
+ - 녹음 (10).wav: f0=168.1, f1=390.9, f2=1569.5, score=79, gender=Female
+   feedback: Tongue too back → move it slightly forward.
+ - 녹음.wav: f0=191.0, f1=387.3, f2=1584.9, score=81, gender=Female
+   feedback: Tongue too back → move it slightly forward.
+ - 녹음 (7).wav: f0=147.6, f1=421.8, f2=1619.9, score=0, gender=Male
+   feedback: Mouth too closed / tongue too high → lower tongue slightly.
