@@ -3,3 +3,4 @@
 __pycache__
 sample/
 analysis/output/
+analysis/batch_out*
