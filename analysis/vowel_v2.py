@@ -179,7 +179,11 @@ def compute_score(f1, f2, f3, vowel_key, ref_table):
         f3_z = abs(f3 - std["f3"]) / 400.0
         z_avg = (z_avg * 0.9) + (f3_z * 0.1)
 
-    raw_score = 100 - (z_avg * 33.0)
+    if z_avg <= 2.5:
+        return 100
+
+    penalty = (z_avg - 2.5) * 40.0
+    raw_score = 100.0 - penalty
     return int(max(0, min(100, raw_score)))
 
 
