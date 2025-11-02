@@ -252,6 +252,35 @@ body {
 .record-btn:hover { transform: translateY(-1px); box-shadow: var(--shadow-lg); background: var(--color-primary-600); }
 .record-btn:focus-visible { outline: 3px solid rgba(139, 94, 60, 0.35); outline-offset: 4px; }
 .record-btn.recording { animation: pulse 1.2s var(--easing-standard) infinite; }
+
+.analysis-status,
+.analysis-feedback {
+    margin-top: var(--space-4);
+    text-align: center;
+    color: var(--color-text);
+}
+
+.analysis-feedback {
+    font-weight: 500;
+    background: rgba(243, 231, 221, 0.6);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4);
+    box-shadow: var(--shadow-sm);
+    display: inline-block;
+    margin: var(--space-4) auto;
+    max-width: 520px;
+    width: 100%;
+    text-align: left;
+}
+.analysis-feedback .feedback-list {
+    list-style: disc inside;
+    margin: 0;
+    padding: 0;
+    text-align: left;
+}
+.analysis-feedback .feedback-list li {
+    margin: 6px 0;
+}
 /* remove record-status visuals */
 .record-status { display: none; }
 
@@ -276,6 +305,18 @@ body {
     width: var(--card-size);
     height: var(--card-size);
 }
+.card .card-body {
+    margin-top: var(--space-2);
+    font-size: 0.9rem;
+    text-align: center;
+    color: rgba(43, 43, 43, 0.72);
+    line-height: 1.4;
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 var(--space-2);
+}
 .img-ph {
     width: 100%;
     height: 56%; /* keep the image area nearly square-ish within the square card */
@@ -289,6 +330,25 @@ body {
 .card.total .percent { font-weight: 800; font-size: clamp(20px, 4.5vw, 30px); min-height: 30px; display: flex; align-items: center; justify-content: center; width: 100%; }
 /* Slightly larger 'total' label */
 .card.total .card-title { font-size: 21px; font-weight: 700; }
+
+.analysis-plot {
+    margin: var(--space-6) auto;
+    max-width: 520px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+.analysis-plot img {
+    width: 100%;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border);
+    box-shadow: var(--shadow-sm);
+}
+.analysis-plot-caption {
+    font-size: 0.95rem;
+    color: rgba(43, 43, 43, 0.75);
+}
 
 .note {
     font-size: 14px;

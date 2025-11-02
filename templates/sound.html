@@ -7,33 +7,47 @@
         </div>
     </div>
 
-    <button class="record-btn" id="recordBtn" aria-pressed="false" title="Record 3 seconds">Record</button>
+    <button class="record-btn" id="recordBtn" aria-pressed="false" title="Record 2 seconds">Record</button>
+
+    <div class="analysis-status" id="analysisStatus"></div>
+    <div class="analysis-feedback" id="analysisFeedback"></div>
 
     <div class="cards">
-        <div class="card">
+        <div class="card" data-feature="tongue-height">
             <div class="img-ph"></div>
             <div class="card-title">Tongue Height</div>
+            <div class="card-body">--</div>
         </div>
-        <div class="card">
+        <div class="card" data-feature="tongue-backness">
             <div class="img-ph"></div>
             <div class="card-title">Tongue Backness</div>
+            <div class="card-body">--</div>
         </div>
-        <div class="card">
+        <div class="card" data-feature="lips-roundness">
             <div class="img-ph"></div>
             <div class="card-title">Lips Roundness</div>
+            <div class="card-body">--</div>
         </div>
-        <div class="card">
+        <div class="card" data-feature="breathiness">
             <div class="img-ph"></div>
             <div class="card-title">Breathiness</div>
+            <div class="card-body">--</div>
         </div>
-        <div class="card">
+        <div class="card" data-feature="tension">
             <div class="img-ph"></div>
             <div class="card-title">Tension</div>
+            <div class="card-body">--</div>
         </div>
-        <div class="card total">
+        <div class="card total" data-feature="total">
             <div class="card-title">Total</div>
             <div class="percent"></div>
+            <div class="card-body">--</div>
         </div>
+    </div>
+
+    <div class="analysis-plot" id="analysisPlot" hidden>
+        <img id="analysisPlotImage" alt="Vowel placement chart">
+        <div class="analysis-plot-caption" id="analysisPlotCaption"></div>
     </div>
 
     <script src="{{ url_for('static', path='scripts/sound.js') }}"></script>
@@ -50,5 +64,3 @@
         })();
     </script>
 {% endblock %}
-
-

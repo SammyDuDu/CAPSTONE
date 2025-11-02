@@ -7,3 +7,4 @@ wheel
 numpy
 matplotlib
 praat-parselmouth
+psycopg2-binary

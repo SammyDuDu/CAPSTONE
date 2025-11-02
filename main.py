@@ -1,15 +1,25 @@
 import os
-import random
-import time
-from typing import Annotated
+from tempfile import NamedTemporaryFile
+from typing import Annotated, Dict, Optional
+from uuid import uuid4
 
 from fastapi import FastAPI, UploadFile, Form, HTTPException, Request
-from pydantic import BaseModel
+from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
 from psycopg2 import connect
+
+from analysis import consonant as consonant_analysis
+from analysis.vowel_v2 import (
+    analyze_single_audio,
+    convert_to_wav,
+    STANDARD_MALE_FORMANTS,
+    STANDARD_FEMALE_FORMANTS,
+    plot_single_vowel_space,
+)
 
 DB_URL = "postgresql://capstone_itcd_user:2XLTwuuR3pJw4epFlT7lo71WnsmzuDFU@dpg-d411ot1r0fns739sc58g-a.singapore-postgres.render.com/capstone_itcd"
 
@@ -35,6 +45,206 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+VOWEL_SYMBOL_TO_KEY: Dict[str, str] = {
+    "ㅏ": "a (아)",
+    "ㅓ": "eo (어)",
+    "ㅗ": "o (오)",
+    "ㅜ": "u (우)",
+    "ㅡ": "eu (으)",
+    "ㅣ": "i (이)",
+}
+
+CONSONANT_SYMBOL_TO_SYLLABLE: Dict[str, str] = {
+    "ㄱ": "가",
+    "ㄴ": "나",
+    "ㄷ": "다",
+    "ㄹ": "라",
+    "ㅁ": "마",
+    "ㅂ": "바",
+    "ㅅ": "사",
+    "ㅈ": "자",
+    "ㅊ": "차",
+    "ㅋ": "카",
+    "ㅌ": "타",
+    "ㅍ": "파",
+    "ㅎ": "하",
+    "ㄲ": "까",
+    "ㄸ": "따",
+    "ㅃ": "빠",
+    "ㅆ": "싸",
+    "ㅉ": "짜",
+}
+
+PLOT_OUTPUT_DIR = os.path.join("static", "images", "analysis")
+os.makedirs(PLOT_OUTPUT_DIR, exist_ok=True)
+
+
+def resolve_sound_symbol(symbol: str) -> str:
+    if symbol in VOWEL_SYMBOL_TO_KEY:
+        return "vowel"
+    if symbol in CONSONANT_SYMBOL_TO_SYLLABLE:
+        return "consonant"
+    raise HTTPException(status_code=400, detail=f"Unsupported sound symbol: {symbol}")
+
+
+def _safe_float(value):
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return value
+
+
+def cleanup_temp_file(path: Optional[str]):
+    if not path:
+        return
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+async def save_upload_to_temp(upload: UploadFile) -> str:
+    suffix = os.path.splitext(upload.filename or "")[1]
+    if not suffix:
+        suffix = ".webm"
+    tmp = NamedTemporaryFile(delete=False, suffix=suffix)
+    try:
+        content = await upload.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="Empty audio file.")
+        tmp.write(content)
+    finally:
+        tmp.close()
+    return tmp.name
+
+
+def run_vowel_analysis(audio_path: str, symbol: str):
+    vowel_key = VOWEL_SYMBOL_TO_KEY[symbol]
+    result = analyze_single_audio(audio_path, vowel_key)
+    if not result:
+        raise ValueError("Failed to analyse vowel recording.")
+    ref_table = STANDARD_MALE_FORMANTS if result.get("gender") == "Male" else STANDARD_FEMALE_FORMANTS
+    plot_url = None
+    try:
+        f1_val = result.get("f1")
+        f2_val = result.get("f2")
+        gender_guess = result.get("gender")
+        if f1_val and f2_val and gender_guess:
+            filename = f"{uuid4().hex}.png"
+            abs_path = os.path.join(PLOT_OUTPUT_DIR, filename)
+            plot_single_vowel_space(f1_val, f2_val, vowel_key, gender_guess, abs_path)
+            plot_url = "/" + abs_path.replace(os.sep, "/")
+    except Exception:
+        plot_url = None
+    return {
+        "analysis_type": "vowel",
+        "score": _safe_float(result.get("score")),
+        "feedback": result.get("feedback"),
+        "details": {
+            "symbol": symbol,
+            "vowel_key": vowel_key,
+            "gender": result.get("gender"),
+            "formants": {
+                "f0": _safe_float(result.get("f0")),
+                "f1": _safe_float(result.get("f1")),
+                "f2": _safe_float(result.get("f2")),
+                "f3": _safe_float(result.get("f3")),
+            },
+            "quality_hint": result.get("quality_hint"),
+            "reference": {
+                "f1": _safe_float(ref_table.get(vowel_key, {}).get("f1")),
+                "f1_sd": _safe_float(ref_table.get(vowel_key, {}).get("f1_sd")),
+                "f2": _safe_float(ref_table.get(vowel_key, {}).get("f2")),
+                "f2_sd": _safe_float(ref_table.get(vowel_key, {}).get("f2_sd")),
+                "f3": _safe_float(ref_table.get(vowel_key, {}).get("f3")),
+            },
+            "plot_url": plot_url,
+        },
+    }
+
+
+def run_consonant_analysis(audio_path: str, symbol: str):
+    syllable = CONSONANT_SYMBOL_TO_SYLLABLE[symbol]
+    info = consonant_analysis.reference.get(syllable)
+    if info is None:
+        raise ValueError(f"{symbol} ({syllable}) is not supported.")
+
+    tmp_out = NamedTemporaryFile(delete=False, suffix=".wav")
+    try:
+        wav_path = tmp_out.name
+    finally:
+        tmp_out.close()
+
+    try:
+        if not convert_to_wav(audio_path, wav_path):
+            raise ValueError("Audio conversion failed.")
+
+        snd, y, sr = consonant_analysis.load_sound(wav_path)
+        measured_feats = consonant_analysis.extract_features_for_syllable(snd, y, sr, syllable, info)
+        vot_for_pitch = measured_feats.get("VOT_ms")
+        f0_est, sex_guess = consonant_analysis.estimate_speaker_f0_and_sex(
+            wav_path=wav_path,
+            vot_ms=vot_for_pitch
+        )
+        sex_for_scoring = sex_guess if sex_guess != "unknown" else "female"
+        per_feature_report, overall_score, advice_list = consonant_analysis.score_against_reference(
+            measured_feats,
+            info["features"],
+            sex_for_scoring
+        )
+
+        features_serialized = {
+            name: {k: _safe_float(v) for k, v in data.items()}
+            for name, data in per_feature_report.items()
+        }
+        measured_serialized = {k: _safe_float(v) for k, v in measured_feats.items()}
+        extras = {}
+        if "burst_dB" in measured_feats:
+            extras["burst_dB"] = _safe_float(measured_feats["burst_dB"])
+
+        score = _safe_float(overall_score) or 0.0
+        feedback_text = " ".join(advice_list) if advice_list else info.get("coaching")
+
+        return {
+            "analysis_type": "consonant",
+            "score": score,
+            "feedback": feedback_text,
+            "details": {
+                "symbol": symbol,
+                "syllable": syllable,
+                "gender": sex_guess,
+                "f0": _safe_float(f0_est),
+                "features": features_serialized,
+                "advice_list": advice_list,
+                "coaching": info.get("coaching"),
+                "measured": measured_serialized,
+                "extras": extras,
+            },
+        }
+    finally:
+        cleanup_temp_file(wav_path)
+
+
+async def analyse_uploaded_audio(audio: UploadFile, symbol: str):
+    analysis_kind = resolve_sound_symbol(symbol)
+    temp_path = await save_upload_to_temp(audio)
+    try:
+        if analysis_kind == "vowel":
+            return await run_in_threadpool(run_vowel_analysis, temp_path, symbol)
+        return await run_in_threadpool(run_consonant_analysis, temp_path, symbol)
+    finally:
+        cleanup_temp_file(temp_path)
+
+
+def normalise_score(score_value) -> int:
+    try:
+        return max(0, min(100, int(round(float(score_value)))))
+    except (TypeError, ValueError):
+        return 0
+
 
 # --- Route to Serve the Main HTML Page ---
 @app.get("/", response_class=HTMLResponse)
@@ -261,37 +471,40 @@ async def analyze_sound(
 ):
     if not audio.filename:
         raise HTTPException(status_code=400, detail="No audio file provided.")
-    
+
     # Validate user exists
     with connect(DB_URL, sslmode="require") as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT id FROM users WHERE id = %s", (userid,))
             if cur.fetchone() is None:
                 raise HTTPException(status_code=404, detail="User not found")
-    
-    # TODO: Perform actual audio analysis here
-    # For now, return hardcoded 80%
-    result = 80
-    
+
+    analysis_result = await analyse_uploaded_audio(audio, sound.strip())
+    score_value = normalise_score(analysis_result.get("score"))
+
     # Update progress in database with the analysis result
     with connect(DB_URL, sslmode="require") as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE progress SET progress = GREATEST(progress, %s) WHERE userid = %s AND sound = %s",
-                (result, userid, sound)
+                (score_value, userid, sound)
             )
             if cur.rowcount == 0:
                 # Insert if no existing row
                 cur.execute(
                     "INSERT INTO progress (userid, sound, progress) VALUES (%s, %s, %s)",
-                    (userid, sound, result)
+                    (userid, sound, score_value)
                 )
             conn.commit()
-    
+
     return {
         "userid": userid,
         "sound": sound,
-        "result": result
+        "analysis_type": analysis_result.get("analysis_type"),
+        "score": score_value,
+        "result": score_value,
+        "feedback": analysis_result.get("feedback"),
+        "details": analysis_result.get("details"),
     }
 
 
@@ -302,12 +515,15 @@ async def analyze_sound_guest(
 ):
     if not audio.filename:
         raise HTTPException(status_code=400, detail="No audio file provided.")
-    
-    # TODO: Perform actual audio analysis here
-    # For now, return hardcoded 80%
-    result = 80
-    
+
+    analysis_result = await analyse_uploaded_audio(audio, sound.strip())
+    score_value = normalise_score(analysis_result.get("score"))
+
     return {
         "sound": sound,
-        "result": result
+        "analysis_type": analysis_result.get("analysis_type"),
+        "score": score_value,
+        "result": score_value,
+        "feedback": analysis_result.get("feedback"),
+        "details": analysis_result.get("details"),
     }

@@ -792,7 +792,11 @@ def score_against_reference(measured_feats, ref_feats, sex):
         overall_score = None
     else:
         avg_abs_z = sum(z_list)/len(z_list)
-        overall_score = max(0, 100 - (avg_abs_z * 20))
+        if avg_abs_z <= 2.5:
+            overall_score = 100
+        else:
+            penalty = (avg_abs_z - 2.5) * 40.0
+            overall_score = max(0, 100 - penalty)
 
     return per_feature_report, overall_score, advice_list
 
