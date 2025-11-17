@@ -123,9 +123,9 @@ async def save_upload_to_temp(upload: UploadFile) -> str:
 
 def run_vowel_analysis(audio_path: str, symbol: str):
     vowel_key = VOWEL_SYMBOL_TO_KEY[symbol]
-    result = analyze_single_audio(audio_path, vowel_key)
-    if not result:
-        raise ValueError("Failed to analyse vowel recording.")
+    result, error = analyze_single_audio(audio_path, vowel_key, return_reason=True)
+    if error:
+        raise ValueError(error)
     ref_table = STANDARD_MALE_FORMANTS if result.get("gender") == "Male" else STANDARD_FEMALE_FORMANTS
     plot_url = None
     try:
@@ -235,6 +235,8 @@ async def analyse_uploaded_audio(audio: UploadFile, symbol: str):
         if analysis_kind == "vowel":
             return await run_in_threadpool(run_vowel_analysis, temp_path, symbol)
         return await run_in_threadpool(run_consonant_analysis, temp_path, symbol)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     finally:
         cleanup_temp_file(temp_path)
 

@@ -5,6 +5,9 @@ import numpy as np
 import scipy.signal
 import parselmouth  # <- Praat bridge
 
+# Import common configuration
+from .config import F0_GENDER_THRESHOLD
+
 ############################################################
 # 1. Reference data (same as yours)
 ############################################################
@@ -541,9 +544,9 @@ def estimate_speaker_f0_and_sex(wav_path, vot_ms=None, extra_offset_ms=10,
 
     f0_median = float(np.median(voiced_f0))
 
-    # infer sex from pitch
-    # ~<165 Hz => likely male, ~>=165 Hz => likely female
-    if f0_median >= 165:
+    # infer sex from pitch using shared threshold from config
+    # ~<F0_GENDER_THRESHOLD Hz => likely male, ~>=F0_GENDER_THRESHOLD Hz => likely female
+    if f0_median >= F0_GENDER_THRESHOLD:
         inferred_sex = "female"
     else:
         inferred_sex = "male"
@@ -789,13 +792,16 @@ def score_against_reference(measured_feats, ref_feats, sex):
                     advice_list.append("Your low-frequency nasal energy is " + direction + " than expected. Check nasal/oral airflow balance.")
 
     if len(z_list) == 0:
-        overall_score = None
+        # No valid features detected - return low score instead of None
+        overall_score = 0.0
+        if not advice_list:
+            advice_list.append("Could not extract enough acoustic features. Check audio quality or recording.")
     else:
         avg_abs_z = sum(z_list)/len(z_list)
-        if avg_abs_z <= 2.5:
+        if avg_abs_z <= 1.5:
             overall_score = 100
         else:
-            penalty = (avg_abs_z - 2.5) * 40.0
+            penalty = (avg_abs_z - 1.5) * 60.0
             overall_score = max(0, 100 - penalty)
 
     return per_feature_report, overall_score, advice_list
