@@ -313,8 +313,9 @@
                     setStatus('분석이 완료되었습니다. 다시 녹음하려면 버튼을 누르세요.');
                 } catch (err) {
                     console.error('Failed to send recording for analysis:', err);
-                    setStatus(err && err.message ? `분석 실패: ${err.message}` : '분석 요청에 실패했습니다.');
-                    setFeedback('');
+                    const errorMessage = err && err.message ? err.message : '분석 요청에 실패했습니다.';
+                    setStatus(`분석 실패: ${errorMessage}`);
+                    setFeedback([`분석 실패: ${errorMessage}`]);
                     setScore('');
                     resetCards();
                 }

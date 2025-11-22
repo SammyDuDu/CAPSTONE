@@ -2,7 +2,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import os, subprocess
+import os
+import subprocess
+import tempfile
+import uuid
 import numpy as np
 import parselmouth
 import matplotlib
@@ -39,8 +42,8 @@ STANDARD_FEMALE_FORMANTS = {
     'i (이)':  {'f1': 273, 'f2': 2864, 'f3': 3400, 'f1_sd':  22, 'f2_sd': 109},
 }
 
-# Gender guess threshold (Hz). Lower pitch usually means male.
-F0_GENDER_THRESHOLD = 165.0
+# Import gender threshold from config
+from .config import F0_GENDER_THRESHOLD
 
 
 #####################################
@@ -174,15 +177,16 @@ def compute_score(f1, f2, f3, vowel_key, ref_table):
     f2_z = abs(f2 - std["f2"]) / std["f2_sd"]
     z_avg = (f1_z + f2_z) / 2.0
 
-    # Give F3 an optional ~10% weight
+    # Give F3 a stronger weight (default sigma 250 Hz when not provided)
     if "f3" in std and f3:
-        f3_z = abs(f3 - std["f3"]) / 400.0
-        z_avg = (z_avg * 0.9) + (f3_z * 0.1)
+        f3_sd = std.get("f3_sd", 250.0)
+        f3_z = abs(f3 - std["f3"]) / f3_sd
+        z_avg = (z_avg * 0.75) + (f3_z * 0.25)
 
-    if z_avg <= 2.5:
+    if z_avg <= 1.5:
         return 100
 
-    penalty = (z_avg - 2.5) * 40.0
+    penalty = (z_avg - 1.5) * 60.0
     raw_score = 100.0 - penalty
     return int(max(0, min(100, raw_score)))
 
@@ -221,7 +225,7 @@ def get_feedback(vowel_key, f1, f2, ref_table, quality_hint=None):
 ###############################################
 # 7. High-level: analyze a single sample
 ###############################################
-def analyze_single_audio(audio_path: str, vowel_key: str):
+def analyze_single_audio(audio_path: str, vowel_key: str, *, return_reason: bool = False):
     """
     1) Convert with ffmpeg
     2) Extract F0/F1/F2/F3 from the stable window
@@ -229,33 +233,61 @@ def analyze_single_audio(audio_path: str, vowel_key: str):
     4) Return scores and feedback as a dictionary
     """
     if not os.path.exists(audio_path):
+        msg = "Audio file not found."
+        if return_reason:
+            return None, msg
         return None
 
-    tmp_wav = "kospa_temp.wav"
+    try:
+        original_size = os.path.getsize(audio_path)
+    except OSError:
+        original_size = -1
+
+    # Create unique temporary file to avoid race conditions
+    tmp_wav = os.path.join(tempfile.gettempdir(), f"kospa_temp_{uuid.uuid4().hex}.wav")
+
     if not convert_to_wav(audio_path, tmp_wav):
+        msg = f"Failed to convert input audio (size={original_size})."
+        print(f"[analyze_single_audio] {msg}")
+        if return_reason:
+            return None, msg
         return None
+
+    try:
+        wav_size = os.path.getsize(tmp_wav)
+    except OSError:
+        wav_size = -1
+    print(f"[analyze_single_audio] Converted sizes input={original_size}, wav={wav_size}")
 
     f1, f2, f3, f0, qhint = analyze_vowel_and_pitch(tmp_wav)
 
+    # Clean up temporary file
     try:
         os.remove(tmp_wav)
     except OSError:
         pass
 
     if f1 is None or f2 is None or f0 is None:
+        msg = qhint or "Could not extract stable formants."
+        if return_reason:
+            return None, msg
+        print(f"[analyze_single_audio] {msg}")
         return None
 
     gender_guess = "Male" if f0 < F0_GENDER_THRESHOLD else "Female"
     ref_table = STANDARD_MALE_FORMANTS if gender_guess == "Male" else STANDARD_FEMALE_FORMANTS
 
     if vowel_key not in ref_table:
-        # Skip vowels outside the supported set
+        msg = "Requested vowel key is not supported by reference table."
+        if return_reason:
+            return None, msg
+        print(f"[analyze_single_audio] {msg}")
         return None
 
     score = compute_score(f1, f2, f3, vowel_key, ref_table)
     feedback = get_feedback(vowel_key, f1, f2, ref_table, quality_hint=qhint)
 
-    return {
+    result = {
         "vowel_key": vowel_key,
         "audio_path": audio_path,
         "gender": gender_guess,
@@ -267,6 +299,9 @@ def analyze_single_audio(audio_path: str, vowel_key: str):
         "feedback": feedback,
         "quality_hint": qhint,
     }
+    if return_reason:
+        return result, None
+    return result
 
 
 ###############################################
@@ -295,6 +330,19 @@ def plot_single_vowel_space(f1, f2, vowel_key, gender_guess, out_path):
         label="Target 1σ"
     )
     ax.add_patch(ellipse)
+
+    ellipse_2 = Ellipse(
+        (tgt["f2"], tgt["f1"]),
+        width=tgt["f2_sd"] * 4.0,
+        height=tgt["f1_sd"] * 4.0,
+        angle=0,
+        color="green",
+        alpha=0.07,
+        linestyle="--",
+        linewidth=1.0,
+        label="Target 2σ"
+    )
+    ax.add_patch(ellipse_2)
 
     # Measured point
     ax.scatter(f2, f1, c="red", s=200, alpha=0.8, label="You")

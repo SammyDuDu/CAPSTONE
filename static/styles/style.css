@@ -268,14 +268,15 @@ body {
     box-shadow: var(--shadow-sm);
     display: inline-block;
     margin: var(--space-4) auto;
-    max-width: 520px;
+    max-width: min(680px, 90vw);
     width: 100%;
     text-align: left;
+    white-space: normal;
 }
 .analysis-feedback .feedback-list {
     list-style: disc inside;
     margin: 0;
-    padding: 0;
+    padding-left: var(--space-3);
     text-align: left;
 }
 .analysis-feedback .feedback-list li {
