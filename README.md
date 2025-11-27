@@ -165,6 +165,16 @@ Organized API endpoints:
 4. Configure Security Group: Allow inbound TCP port 8000
 5. Access via: `http://<EC2-Public-IP>:8000`
 
+**The steps for a manual update are:**
+
+1.  **Commit and Push** code changes to your `main` branch on GitHub.
+2.  **SSH** into the EC2 instance (`ssh -i /path/to/your/keyfile.pem ubuntu@ec2-54-252-177-40.ap-southeast-2.compute.amazonaws.com`).
+3.  **Pull changes** and restart the containers:
+    ```bash
+    cd ~/CAPSTONE # Go to your project directory
+    git pull origin main # Get the latest code
+    docker compose up -d --build # Rebuild images and restart services
+
 ## Production Notes
 
 - Set specific CORS origins in `main.py` (replace `"*"`)
