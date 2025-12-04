@@ -24,6 +24,9 @@ from database import (
 from utils import (
     analyse_uploaded_audio,
     normalise_score,
+    save_upload_to_temp,
+    cleanup_temp_file,
+    run_vowel_analysis,
 )
 
 
@@ -76,25 +79,63 @@ async def calibration_upload(
     if not user_exists(userid):
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Read audio content
-    audio_content = await audio.read()
+    # Save to temporary file
+    temp_audio = await save_upload_to_temp(audio)
 
-    # TODO: Analyze the recording and extract actual formants
-    # Currently using placeholder values
-    f1_mean = 500
-    f2_mean = 1500
-    f1_std = 100
-    f2_std = 200
+    try:
+        # Convert sound symbol to vowel key
+        # 'a' -> 'a (아)', 'e' -> 'eo (어)', 'u' -> 'o (오)'
+        # Note: 'e' is mapped to 'eo' and 'u' to 'o' for backward compatibility
+        sound_map = {
+            'a': 'a (아)',
+            'e': 'eo (어)',  # 'e' represents 'ㅓ' (eo)
+            'u': 'o (오)',   # 'u' represents 'ㅗ' (o)
+        }
+        vowel_key = sound_map.get(sound)
 
-    # Save calibration data
-    save_calibration(userid, sound, f1_mean, f2_mean, f1_std, f2_std)
+        # Run vowel analysis to extract actual formants
+        # Note: We use the symbol directly without error checking since we validated it
+        symbol_map = {'a': 'ㅏ', 'e': 'ㅓ', 'u': 'ㅗ'}
+        symbol = symbol_map.get(sound)
+        result = run_vowel_analysis(temp_audio, symbol)
 
-    return {
-        "ok": True,
-        "message": f"Calibration recording for '{sound}' saved",
-        "sound": sound,
-        "userid": userid
-    }
+        if result.get('error'):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Calibration analysis failed: {result['error']}"
+            )
+
+        # Extract formant values from analysis
+        details = result.get('details', {})
+        formants = details.get('formants', {})
+
+        f1_mean = formants.get('f1', 500)  # fallback to 500 if missing
+        f2_mean = formants.get('f2', 1500)  # fallback to 1500 if missing
+
+        # Use conservative standard deviations for calibration
+        # (will be refined if we collect multiple samples per vowel)
+        f1_std = 80
+        f2_std = 120
+
+        # Save calibration data
+        save_calibration(userid, sound, f1_mean, f2_mean, f1_std, f2_std)
+
+        return {
+            "ok": True,
+            "message": f"Calibration recording for '{sound}' saved",
+            "sound": sound,
+            "userid": userid,
+            "measured": {
+                "f1": round(f1_mean, 1),
+                "f2": round(f2_mean, 1),
+                "gender": details.get('gender', 'Unknown'),
+                "f0": round(formants.get('f0', 0), 1) if formants.get('f0') else None
+            }
+        }
+
+    finally:
+        # Clean up temporary file
+        cleanup_temp_file(temp_audio)
 
 
 # =============================================================================
@@ -138,8 +179,8 @@ async def analyze_sound(
     if not user_exists(userid):
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Perform analysis
-    analysis_result = await analyse_uploaded_audio(audio, sound.strip())
+    # Perform analysis (with personalization if calibration complete)
+    analysis_result = await analyse_uploaded_audio(audio, sound.strip(), userid=userid)
     score_value = normalise_score(analysis_result.get("score"))
 
     # Update user's progress (keeps highest score)

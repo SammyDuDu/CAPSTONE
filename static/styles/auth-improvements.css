@@ -1,0 +1,271 @@
+/* =============================================================================
+ * AUTHENTICATION UI IMPROVEMENTS
+ * Toast notifications, form validation, loading states
+ * ============================================================================= */
+
+/* Toast Notification Container */
+.toast-container {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+}
+
+.toast {
+    background: white;
+    border-radius: 8px;
+    padding: 16px 20px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    max-width: 350px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    pointer-events: all;
+    animation: toastSlideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    border-left: 4px solid;
+}
+
+@keyframes toastSlideIn {
+    from {
+        transform: translateX(400px);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.toast.toast-success {
+    border-left-color: #10b981;
+}
+
+.toast.toast-error {
+    border-left-color: #ef4444;
+}
+
+.toast.toast-info {
+    border-left-color: #3b82f6;
+}
+
+.toast-icon {
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+.toast-success .toast-icon::before {
+    content: "✓";
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    background: #10b981;
+    color: white;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 24px;
+}
+
+.toast-error .toast-icon::before {
+    content: "✕";
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    background: #ef4444;
+    color: white;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 24px;
+}
+
+.toast-info .toast-icon::before {
+    content: "i";
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    background: #3b82f6;
+    color: white;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 24px;
+    font-weight: bold;
+}
+
+.toast-content {
+    flex: 1;
+}
+
+.toast-title {
+    font-weight: 600;
+    margin-bottom: 2px;
+    color: #1f2937;
+}
+
+.toast-message {
+    font-size: 14px;
+    color: #6b7280;
+}
+
+.toast-close {
+    background: none;
+    border: none;
+    color: #9ca3af;
+    cursor: pointer;
+    padding: 0;
+    font-size: 18px;
+    line-height: 1;
+    transition: color 0.2s;
+}
+
+.toast-close:hover {
+    color: #4b5563;
+}
+
+/* Form Error Message */
+.form-error {
+    background: #fee2e2;
+    border: 1px solid #fecaca;
+    border-radius: 6px;
+    padding: 12px;
+    margin-bottom: 16px;
+    color: #dc2626;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.form-error[hidden] {
+    display: none;
+}
+
+.form-error::before {
+    content: "⚠";
+    font-size: 16px;
+}
+
+/* Input Hints */
+.input-hint {
+    font-size: 12px;
+    margin-top: 4px;
+    margin-bottom: 12px;
+    color: #6b7280;
+}
+
+.input-hint[hidden] {
+    display: none;
+}
+
+.input-hint.error {
+    color: #dc2626;
+}
+
+.input-hint.success {
+    color: #10b981;
+}
+
+/* Input States */
+.input.invalid {
+    border-color: #ef4444;
+    background: #fef2f2;
+}
+
+.input.valid {
+    border-color: #10b981;
+}
+
+/* Button Loading State */
+.modal-btn.loading {
+    position: relative;
+    color: transparent;
+    pointer-events: none;
+}
+
+.modal-btn.loading::after {
+    content: "";
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    top: 50%;
+    left: 50%;
+    margin-left: -8px;
+    margin-top: -8px;
+    border: 2px solid white;
+    border-radius: 50%;
+    border-top-color: transparent;
+    animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Modal Improvements */
+.modal-body {
+    padding: 24px;
+}
+
+.modal label {
+    display: block;
+    font-weight: 500;
+    margin-bottom: 6px;
+    color: #374151;
+    font-size: 14px;
+}
+
+.modal .input {
+    margin-bottom: 4px;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.modal-btn {
+    flex: 1;
+    transition: all 0.2s;
+}
+
+.modal-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Password Strength Indicator */
+.password-strength {
+    height: 4px;
+    background: #e5e7eb;
+    border-radius: 2px;
+    margin-top: 4px;
+    margin-bottom: 8px;
+    overflow: hidden;
+}
+
+.password-strength-bar {
+    height: 100%;
+    transition: width 0.3s, background-color 0.3s;
+    border-radius: 2px;
+}
+
+.password-strength-bar.weak {
+    width: 33%;
+    background-color: #ef4444;
+}
+
+.password-strength-bar.medium {
+    width: 66%;
+    background-color: #f59e0b;
+}
+
+.password-strength-bar.strong {
+    width: 100%;
+    background-color: #10b981;
+}

@@ -170,7 +170,7 @@ async def get_progress(username: str):
 @router.get("/formants")
 async def get_formants(userid: int):
     """
-    Get user's calibration formant data.
+    Get user's calibration formant data and Affine transform.
 
     Query Parameters:
         userid: User's database ID
@@ -178,16 +178,32 @@ async def get_formants(userid: int):
     Returns:
         - userid: User ID
         - formants: Dictionary of calibration data per sound
+        - affine_transform: Personalized F1/F2 → x/y transform matrix
+          - A: 2×2 transformation matrix
+          - b: 2×1 bias vector
 
     Raises:
         HTTPException 404: If user not found
     """
+    from personalization import calibrate_affine
+
     if not user_exists(userid):
         raise HTTPException(status_code=404, detail="User not found")
 
     formants = get_user_formants(userid)
 
+    # Calculate Affine transform for articulatory mapping
+    A, b = calibrate_affine(formants)
+
+    affine_data = None
+    if A is not None and b is not None:
+        affine_data = {
+            "A": A.tolist(),  # Convert numpy array to list for JSON
+            "b": b.tolist()
+        }
+
     return {
         "userid": userid,
-        "formants": formants
+        "formants": formants,
+        "affine_transform": affine_data
     }

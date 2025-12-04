@@ -22,24 +22,69 @@ except Exception:
 #########################################
 # 1. Reference Formant Tables           #
 #########################################
-# Adult Korean monophthongs (a, eo, o, u, eu, i)
+# Adult Korean vowels - All 21 vowels including monophthongs and diphthongs
 # f1_sd and f2_sd indicate how far we can deviate before flagging an issue.
+# Data based on Korean phonetics research and acoustic measurements
 STANDARD_MALE_FORMANTS = {
+    # Basic 6 monophthongs (단모음)
     'a (아)':  {'f1': 651, 'f2': 1156, 'f3': 2500, 'f1_sd': 136, 'f2_sd':  77},
     'eo (어)': {'f1': 445, 'f2':  845, 'f3': 2500, 'f1_sd': 103, 'f2_sd': 149},
     'o (오)':  {'f1': 320, 'f2':  587, 'f3': 2300, 'f1_sd':  56, 'f2_sd': 132},
     'u (우)':  {'f1': 324, 'f2':  595, 'f3': 2400, 'f1_sd':  43, 'f2_sd': 140},
     'eu (으)': {'f1': 317, 'f2': 1218, 'f3': 2600, 'f1_sd':  27, 'f2_sd': 155},
     'i (이)':  {'f1': 236, 'f2': 2183, 'f3': 3010, 'f1_sd':  30, 'f2_sd': 136},
+
+    # Y-vowels (ㅣ-모음계) - F2 increased due to palatal glide
+    'ya (야)':  {'f1': 600, 'f2': 1650, 'f3': 2750, 'f1_sd': 120, 'f2_sd': 140},
+    'yeo (여)': {'f1': 410, 'f2': 1550, 'f3': 2650, 'f1_sd':  95, 'f2_sd': 135},
+    'yo (요)':  {'f1': 300, 'f2': 1350, 'f3': 2500, 'f1_sd':  60, 'f2_sd': 125},
+    'yu (유)':  {'f1': 305, 'f2': 1450, 'f3': 2600, 'f1_sd':  50, 'f2_sd': 130},
+
+    # Front vowels (전설 모음)
+    'ae (애)':  {'f1': 700, 'f2': 1800, 'f3': 2650, 'f1_sd': 130, 'f2_sd': 160},
+    'yae (얘)': {'f1': 650, 'f2': 2000, 'f3': 2800, 'f1_sd': 120, 'f2_sd': 170},
+    'e (에)':   {'f1': 550, 'f2': 1900, 'f3': 2700, 'f1_sd': 110, 'f2_sd': 150},
+    'ye (예)':  {'f1': 500, 'f2': 2100, 'f3': 2800, 'f1_sd': 100, 'f2_sd': 160},
+
+    # Complex vowels (이중 모음)
+    'wa (와)':  {'f1': 485, 'f2':  870, 'f3': 2400, 'f1_sd': 100, 'f2_sd': 140},
+    'wae (왜)': {'f1': 575, 'f2': 1400, 'f3': 2550, 'f1_sd': 110, 'f2_sd': 150},
+    'oe (외)':  {'f1': 450, 'f2': 1500, 'f3': 2600, 'f1_sd':  95, 'f2_sd': 145},
+    'wo (워)':  {'f1': 385, 'f2':  880, 'f3': 2550, 'f1_sd':  85, 'f2_sd': 135},
+    'we (웨)':  {'f1': 470, 'f2': 1450, 'f3': 2650, 'f1_sd':  90, 'f2_sd': 140},
+    'wi (위)':  {'f1': 280, 'f2': 1800, 'f3': 2700, 'f1_sd':  55, 'f2_sd': 150},
+    'ui (의)':  {'f1': 305, 'f2': 1700, 'f3': 2750, 'f1_sd':  60, 'f2_sd': 155},
 }
 
 STANDARD_FEMALE_FORMANTS = {
+    # Basic 6 monophthongs (단모음)
     'a (아)':  {'f1': 945, 'f2': 1582, 'f3': 3200, 'f1_sd':  83, 'f2_sd': 141},
     'eo (어)': {'f1': 576, 'f2':  961, 'f3': 2700, 'f1_sd':  78, 'f2_sd':  87},
     'o (오)':  {'f1': 371, 'f2':  700, 'f3': 2600, 'f1_sd':  25, 'f2_sd':  72},
     'u (우)':  {'f1': 346, 'f2':  810, 'f3': 2700, 'f1_sd':  28, 'f2_sd': 106},
     'eu (으)': {'f1': 390, 'f2': 1752, 'f3': 2900, 'f1_sd':  34, 'f2_sd': 191},
     'i (이)':  {'f1': 273, 'f2': 2864, 'f3': 3400, 'f1_sd':  22, 'f2_sd': 109},
+
+    # Y-vowels (ㅣ-모음계) - F2 increased due to palatal glide
+    'ya (야)':  {'f1': 870, 'f2': 2100, 'f3': 3300, 'f1_sd':  90, 'f2_sd': 160},
+    'yeo (여)': {'f1': 540, 'f2': 1800, 'f3': 3000, 'f1_sd':  85, 'f2_sd': 145},
+    'yo (요)':  {'f1': 350, 'f2': 1600, 'f3': 2800, 'f1_sd':  40, 'f2_sd': 120},
+    'yu (유)':  {'f1': 330, 'f2': 1700, 'f3': 2900, 'f1_sd':  45, 'f2_sd': 130},
+
+    # Front vowels (전설 모음) - measured 애 + estimates
+    'ae (애)':  {'f1': 621, 'f2': 1914, 'f3': 2732, 'f1_sd':  95, 'f2_sd': 170},  # Measured from sample
+    'yae (얘)': {'f1': 920, 'f2': 2200, 'f3': 3350, 'f1_sd':  90, 'f2_sd': 180},
+    'e (에)':   {'f1': 700, 'f2': 2100, 'f3': 3100, 'f1_sd':  85, 'f2_sd': 160},
+    'ye (예)':  {'f1': 650, 'f2': 2300, 'f3': 3200, 'f1_sd':  80, 'f2_sd': 170},
+
+    # Complex vowels (이중 모음)
+    'wa (와)':  {'f1': 660, 'f2': 1100, 'f3': 2750, 'f1_sd':  80, 'f2_sd': 130},
+    'wae (왜)': {'f1': 750, 'f2': 1650, 'f3': 2900, 'f1_sd':  90, 'f2_sd': 150},
+    'oe (외)':  {'f1': 570, 'f2': 1700, 'f3': 2850, 'f1_sd':  75, 'f2_sd': 145},
+    'wo (워)':  {'f1': 500, 'f2': 1050, 'f3': 2800, 'f1_sd':  70, 'f2_sd': 125},
+    'we (웨)':  {'f1': 600, 'f2': 1650, 'f3': 2950, 'f1_sd':  75, 'f2_sd': 140},
+    'wi (위)':  {'f1': 310, 'f2': 2000, 'f3': 3100, 'f1_sd':  40, 'f2_sd': 160},
+    'ui (의)':  {'f1': 340, 'f2': 2100, 'f3': 3050, 'f1_sd':  50, 'f2_sd': 165},
 }
 
 # Import gender threshold from config
@@ -225,12 +270,29 @@ def get_feedback(vowel_key, f1, f2, ref_table, quality_hint=None):
 ###############################################
 # 7. High-level: analyze a single sample
 ###############################################
-def analyze_single_audio(audio_path: str, vowel_key: str, *, return_reason: bool = False):
+def analyze_single_audio(
+    audio_path: str,
+    vowel_key: str,
+    *,
+    return_reason: bool = False,
+    custom_ref_table: dict = None
+):
     """
+    Analyze vowel formants from audio file.
+
     1) Convert with ffmpeg
     2) Extract F0/F1/F2/F3 from the stable window
-    3) Guess gender and pull the matching reference table
+    3) Guess gender and pull the matching reference table (or use custom_ref_table)
     4) Return scores and feedback as a dictionary
+
+    Args:
+        audio_path: Path to audio file
+        vowel_key: Vowel identifier (e.g., 'a (아)')
+        return_reason: If True, return (result, error) tuple
+        custom_ref_table: Optional personalized reference table (overrides standard)
+
+    Returns:
+        Analysis result dict or (None, error_msg) if return_reason=True
     """
     if not os.path.exists(audio_path):
         msg = "Audio file not found."
@@ -275,7 +337,12 @@ def analyze_single_audio(audio_path: str, vowel_key: str, *, return_reason: bool
         return None
 
     gender_guess = "Male" if f0 < F0_GENDER_THRESHOLD else "Female"
-    ref_table = STANDARD_MALE_FORMANTS if gender_guess == "Male" else STANDARD_FEMALE_FORMANTS
+
+    # Use custom reference table if provided, otherwise use standard
+    if custom_ref_table:
+        ref_table = custom_ref_table
+    else:
+        ref_table = STANDARD_MALE_FORMANTS if gender_guess == "Male" else STANDARD_FEMALE_FORMANTS
 
     if vowel_key not in ref_table:
         msg = "Requested vowel key is not supported by reference table."
@@ -358,3 +425,266 @@ def plot_single_vowel_space(f1, f2, vowel_key, gender_guess, out_path):
     plt.tight_layout()
     plt.savefig(out_path)
     plt.close(fig)
+
+
+###############################################
+# 9. Time-series formant extraction for diphthongs
+###############################################
+def extract_formant_trajectory(
+    wav_file_path: str,
+    window_length: float = 0.025,  # 25ms window
+    hop_length: float = 0.010,     # 10ms hop
+    min_frames: int = 5
+):
+    """
+    Extract formant trajectory over time for diphthong analysis.
+
+    Args:
+        wav_file_path: Path to WAV file
+        window_length: Analysis window length in seconds (default 25ms)
+        hop_length: Hop between frames in seconds (default 10ms)
+        min_frames: Minimum number of frames required
+
+    Returns:
+        dict with:
+            'trajectory': List of {'time': float, 'f1': float, 'f2': float, 'f3': float}
+            'duration': Total duration in seconds
+            'success': Boolean
+            'error': Error message if failed
+
+    Example:
+        >>> result = extract_formant_trajectory('audio.wav')
+        >>> for frame in result['trajectory']:
+        ...     print(f"t={frame['time']:.3f}s: F1={frame['f1']:.0f}, F2={frame['f2']:.0f}")
+    """
+    # Convert to WAV if needed
+    if not wav_file_path.lower().endswith('.wav'):
+        temp_wav = tempfile.NamedTemporaryFile(delete=False, suffix='.wav').name
+        if not convert_to_wav(wav_file_path, temp_wav):
+            return {
+                'success': False,
+                'error': 'Failed to convert audio to WAV',
+                'trajectory': [],
+                'duration': 0
+            }
+        wav_file_path = temp_wav
+
+    try:
+        sound = parselmouth.Sound(wav_file_path)
+        duration = sound.duration
+
+        if duration < window_length:
+            return {
+                'success': False,
+                'error': f'Audio too short ({duration:.3f}s < {window_length}s)',
+                'trajectory': [],
+                'duration': duration
+            }
+
+        # Generate time points
+        num_frames = int((duration - window_length) / hop_length) + 1
+
+        if num_frames < min_frames:
+            return {
+                'success': False,
+                'error': f'Too few frames ({num_frames} < {min_frames})',
+                'trajectory': [],
+                'duration': duration
+            }
+
+        trajectory = []
+
+        for i in range(num_frames):
+            t_center = window_length / 2 + i * hop_length
+
+            # Extract window
+            t_start = max(0, t_center - window_length / 2)
+            t_end = min(duration, t_center + window_length / 2)
+
+            try:
+                # Extract formants at this time point
+                formants = sound.to_formant_burg(
+                    time_step=hop_length,
+                    max_number_of_formants=5,
+                    maximum_formant=5500
+                )
+
+                f1 = formants.get_value_at_time(1, t_center)
+                f2 = formants.get_value_at_time(2, t_center)
+                f3 = formants.get_value_at_time(3, t_center)
+
+                # Filter out NaN/undefined values
+                if f1 and not np.isnan(f1) and f2 and not np.isnan(f2):
+                    trajectory.append({
+                        'time': t_center,
+                        'f1': float(f1),
+                        'f2': float(f2),
+                        'f3': float(f3) if f3 and not np.isnan(f3) else 2500.0
+                    })
+            except Exception as e:
+                # Skip problematic frames
+                continue
+
+        if len(trajectory) < min_frames:
+            return {
+                'success': False,
+                'error': f'Too few valid frames ({len(trajectory)} < {min_frames})',
+                'trajectory': [],
+                'duration': duration
+            }
+
+        return {
+            'success': True,
+            'trajectory': trajectory,
+            'duration': duration,
+            'num_frames': len(trajectory),
+            'error': None
+        }
+
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f'Trajectory extraction failed: {str(e)}',
+            'trajectory': [],
+            'duration': 0
+        }
+
+
+def score_diphthong_trajectory(
+    trajectory: list,
+    vowel_key: str,
+    ref_table: dict
+):
+    """
+    Score a diphthong trajectory based on start/end positions and direction.
+
+    Args:
+        trajectory: List of {'time', 'f1', 'f2', 'f3'} from extract_formant_trajectory()
+        vowel_key: Diphthong key (e.g., 'wa (와)')
+        ref_table: Reference formant table
+
+    Returns:
+        dict with:
+            'score': Overall score (0-100)
+            'start_score': Starting position score
+            'end_score': Ending position score
+            'direction_score': Movement direction score
+            'feedback': List of feedback strings
+            'details': Additional metrics
+
+    Example:
+        >>> result = extract_formant_trajectory('wa.wav')
+        >>> score_result = score_diphthong_trajectory(result['trajectory'], 'wa (와)', ref_table)
+        >>> print(f"Score: {score_result['score']}")
+    """
+    from config import DIPHTHONG_TRAJECTORIES, VOWEL_ARTICULATORY_MAP
+
+    if vowel_key not in DIPHTHONG_TRAJECTORIES:
+        # Fallback: treat as monophthong (use middle frames)
+        mid_idx = len(trajectory) // 2
+        mid_frames = trajectory[max(0, mid_idx-2):min(len(trajectory), mid_idx+3)]
+
+        f1_avg = np.mean([f['f1'] for f in mid_frames])
+        f2_avg = np.mean([f['f2'] for f in mid_frames])
+        f3_avg = np.mean([f['f3'] for f in mid_frames])
+
+        mono_score = compute_score(f1_avg, f2_avg, f3_avg, vowel_key, ref_table)
+
+        return {
+            'score': mono_score,
+            'start_score': None,
+            'end_score': None,
+            'direction_score': None,
+            'feedback': [f"Treated as monophthong (score: {mono_score})"],
+            'details': {
+                'f1_avg': f1_avg,
+                'f2_avg': f2_avg,
+                'is_diphthong': False
+            }
+        }
+
+    # Get diphthong trajectory definition
+    diphthong_def = DIPHTHONG_TRAJECTORIES[vowel_key]
+    start_vowel_key = diphthong_def['start']
+    end_vowel_key = diphthong_def['end']
+
+    if start_vowel_key not in ref_table or end_vowel_key not in ref_table:
+        return {
+            'score': 50,
+            'error': f'Missing reference for {start_vowel_key} or {end_vowel_key}',
+            'feedback': ['Reference vowels not found'],
+            'details': {}
+        }
+
+    # Extract start and end portions (first/last 30%)
+    n = len(trajectory)
+    start_portion = trajectory[:max(1, n//3)]
+    end_portion = trajectory[max(1, 2*n//3):]
+
+    # Average formants for start and end
+    start_f1 = np.mean([f['f1'] for f in start_portion])
+    start_f2 = np.mean([f['f2'] for f in start_portion])
+    end_f1 = np.mean([f['f1'] for f in end_portion])
+    end_f2 = np.mean([f['f2'] for f in end_portion])
+
+    # Score start position
+    start_ref = ref_table[start_vowel_key]
+    start_z1 = abs(start_f1 - start_ref['f1']) / start_ref['f1_sd']
+    start_z2 = abs(start_f2 - start_ref['f2']) / start_ref['f2_sd']
+    start_score = max(0, 100 - 10 * (start_z1 + start_z2))
+
+    # Score end position
+    end_ref = ref_table[end_vowel_key]
+    end_z1 = abs(end_f1 - end_ref['f1']) / end_ref['f1_sd']
+    end_z2 = abs(end_f2 - end_ref['f2']) / end_ref['f2_sd']
+    end_score = max(0, 100 - 10 * (end_z1 + end_z2))
+
+    # Score direction (cosine similarity)
+    user_vector = np.array([end_f2 - start_f2, end_f1 - start_f1])
+    target_vector = np.array([
+        end_ref['f2'] - start_ref['f2'],
+        end_ref['f1'] - start_ref['f1']
+    ])
+
+    user_norm = np.linalg.norm(user_vector)
+    target_norm = np.linalg.norm(target_vector)
+
+    if user_norm > 0 and target_norm > 0:
+        cos_sim = np.dot(user_vector, target_vector) / (user_norm * target_norm)
+        cos_sim = max(-1, min(1, cos_sim))  # Clamp
+        direction_score = (cos_sim + 1) * 50  # Map [-1,1] to [0,100]
+    else:
+        direction_score = 0
+
+    # Overall score (weighted average)
+    overall_score = (start_score * 0.35 + end_score * 0.35 + direction_score * 0.30)
+
+    # Generate feedback
+    feedback = []
+    if start_score < 70:
+        feedback.append(f"Starting position deviates from '{start_vowel_key}'")
+    if end_score < 70:
+        feedback.append(f"Ending position deviates from '{end_vowel_key}'")
+    if direction_score < 60:
+        feedback.append(f"Movement direction differs from expected '{diphthong_def['direction']}'")
+
+    if overall_score >= 85:
+        feedback.insert(0, "Excellent diphthong trajectory!")
+    elif overall_score >= 70:
+        feedback.insert(0, "Good trajectory, minor adjustments needed")
+
+    return {
+        'score': round(overall_score, 1),
+        'start_score': round(start_score, 1),
+        'end_score': round(end_score, 1),
+        'direction_score': round(direction_score, 1),
+        'feedback': feedback,
+        'details': {
+            'start': {'f1': start_f1, 'f2': start_f2},
+            'end': {'f1': end_f1, 'f2': end_f2},
+            'start_ref': start_vowel_key,
+            'end_ref': end_vowel_key,
+            'is_diphthong': True,
+            'num_frames': n
+        }
+    }

@@ -5,6 +5,8 @@
         <title>KPC</title>
         <link rel="icon" type="image/svg+xml" href="{{ url_for('static', path='images/favicon.svg') }}">
         <link rel="stylesheet" href="{{ url_for('static', path='styles/style.css') }}">
+        <link rel="stylesheet" href="{{ url_for('static', path='styles/feedback-improvements.css') }}">
+        <link rel="stylesheet" href="{{ url_for('static', path='styles/auth-improvements.css') }}">
     </head>
     <body>
         <div class="topbar">
@@ -34,6 +36,9 @@
             <div class="banner-text">user created</div>
         </div>
 
+        <!-- Toast notification container -->
+        <div class="toast-container" id="toastContainer"></div>
+
         <!-- Non-closable voice calibration modal -->
         <div class="overlay" id="calibrationOverlay" hidden></div>
         <div class="modal" id="calibrationModal" hidden>
@@ -50,10 +55,13 @@
             <div class="modal-title" id="authModalTitle">Log in</div>
             <div class="modal-body">
                 <div id="loginForm">
+                    <div class="form-error" id="loginError" hidden></div>
                     <label>username</label>
-                    <input type="text" id="loginUsername" class="input" placeholder="username">
+                    <input type="text" id="loginUsername" class="input" placeholder="3+ characters" autocomplete="username" maxlength="30">
+                    <div class="input-hint" id="usernameHint" hidden></div>
                     <label>password</label>
-                    <input type="password" id="loginPassword" class="input" placeholder="password">
+                    <input type="password" id="loginPassword" class="input" placeholder="4+ characters" autocomplete="current-password" maxlength="100">
+                    <div class="input-hint" id="passwordHint" hidden></div>
                     <div class="modal-actions">
                         <button class="modal-btn" id="submitLogin">log in</button>
                         <button class="modal-btn secondary" id="submitSignup">sign up</button>
@@ -71,6 +79,7 @@
             </div>
         </div>
 
+        <script src="{{ url_for('static', path='scripts/auth-helpers.js') }}"></script>
         <script src="{{ url_for('static', path='scripts/ui.js') }}"></script>
     </body>
 </html>

@@ -39,7 +39,9 @@ def get_connection():
     Yields:
         psycopg2.connection: Database connection object
     """
-    conn = connect(DB_URL, sslmode="require")
+    # Use sslmode="prefer" for Docker environment (SSL optional)
+    # Change to sslmode="require" for production with SSL-enabled PostgreSQL
+    conn = connect(DB_URL, sslmode="prefer")
     try:
         yield conn
     finally:

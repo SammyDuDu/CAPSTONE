@@ -42,14 +42,27 @@
             <div class="card-title">Total</div>
             <div class="percent"></div>
             <div class="card-body">--</div>
+            <div class="score-progress-bar">
+                <div class="score-progress-fill" id="scoreProgressFill" style="width: 0%"></div>
+            </div>
         </div>
     </div>
 
     <div class="analysis-plot" id="analysisPlot" hidden>
-        <img id="analysisPlotImage" alt="Vowel placement chart">
+        <div class="plot-controls">
+            <button class="plot-toggle-btn" id="plotModeToggle" title="Switch plot display mode">
+                <span id="plotModeLabel">Formant Chart</span>
+                <span class="toggle-arrow">⇄</span>
+            </button>
+        </div>
+        <div style="position: relative; display: inline-block;">
+            <img id="analysisPlotImage" alt="Vowel placement chart">
+            <canvas id="plotCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none;"></canvas>
+        </div>
         <div class="analysis-plot-caption" id="analysisPlotCaption"></div>
     </div>
 
+    <script src="{{ url_for('static', path='scripts/plot-animation.js') }}"></script>
     <script src="{{ url_for('static', path='scripts/sound.js') }}"></script>
     <script>
         (function () {

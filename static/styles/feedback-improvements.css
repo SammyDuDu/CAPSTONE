@@ -1,0 +1,336 @@
+/*
+ * Feedback UI Improvements & Plot Animation
+ * - Score-based color coding
+ * - Smooth transitions
+ * - Icon indicators
+ */
+
+/* =============================================================================
+ * SCORE COLOR CODING
+ * ============================================================================= */
+
+:root {
+    --color-score-excellent: #10b981;  /* Green - 90-100 */
+    --color-score-good: #3b82f6;      /* Blue - 75-89 */
+    --color-score-fair: #f59e0b;      /* Amber - 60-74 */
+    --color-score-poor: #ef4444;      /* Red - 0-59 */
+}
+
+/* Score display in total card */
+.card.total {
+    transition: all var(--duration-med) var(--easing-standard);
+}
+
+.card.total[data-score-level="excellent"] {
+    background: linear-gradient(135deg, var(--color-score-excellent) 0%, #059669 100%);
+    color: white;
+    box-shadow: 0 4px 20px rgba(16, 185, 129, 0.3);
+}
+
+.card.total[data-score-level="good"] {
+    background: linear-gradient(135deg, var(--color-score-good) 0%, #2563eb 100%);
+    color: white;
+    box-shadow: 0 4px 20px rgba(59, 130, 246, 0.3);
+}
+
+.card.total[data-score-level="fair"] {
+    background: linear-gradient(135deg, var(--color-score-fair) 0%, #d97706 100%);
+    color: white;
+    box-shadow: 0 4px 20px rgba(245, 158, 11, 0.3);
+}
+
+.card.total[data-score-level="poor"] {
+    background: linear-gradient(135deg, var(--color-score-poor) 0%, #dc2626 100%);
+    color: white;
+    box-shadow: 0 4px 20px rgba(239, 68, 68, 0.3);
+}
+
+/* Animated percent number */
+.card.total .percent {
+    font-size: 48px;
+    font-weight: 700;
+    animation: scorePopIn var(--duration-slow) var(--easing-standard);
+}
+
+@keyframes scorePopIn {
+    0% {
+        transform: scale(0.5);
+        opacity: 0;
+    }
+    60% {
+        transform: scale(1.1);
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* =============================================================================
+ * FEEDBACK MESSAGES WITH ICONS
+ * ============================================================================= */
+
+#analysisFeedback {
+    padding: var(--space-6);
+    margin: var(--space-6) clamp(16px, 3vw, 24px);
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    border-left: 4px solid var(--color-primary);
+    box-shadow: var(--shadow-md);
+    font-size: 16px;
+    line-height: 1.6;
+
+    /* Animation */
+    animation: feedbackSlideIn var(--duration-slow) var(--easing-standard);
+}
+
+@keyframes feedbackSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+#analysisFeedback:empty {
+    display: none;
+}
+
+/* Add icon prefix based on score */
+#analysisFeedback::before {
+    content: "💡 ";
+    font-size: 20px;
+    margin-right: 8px;
+}
+
+#analysisFeedback[data-score-level="excellent"]::before {
+    content: "✅ ";
+}
+
+#analysisFeedback[data-score-level="good"]::before {
+    content: "👍 ";
+}
+
+#analysisFeedback[data-score-level="fair"]::before {
+    content: "⚠️ ";
+}
+
+#analysisFeedback[data-score-level="poor"]::before {
+    content: "❌ ";
+}
+
+/* =============================================================================
+ * PLOT ANIMATION
+ * ============================================================================= */
+
+#analysisPlot {
+    margin: var(--space-7) clamp(16px, 3vw, 24px);
+    padding: var(--space-6);
+    background: var(--color-surface);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    text-align: center;
+
+    /* Initially hidden, slide up when shown */
+    transition: all var(--duration-slow) var(--easing-standard);
+}
+
+#analysisPlot:not([hidden]) {
+    animation: plotSlideUp var(--duration-slow) var(--easing-standard);
+}
+
+@keyframes plotSlideUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+#analysisPlotImage {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--radius-md);
+
+    /* Smooth fade-in when image loads */
+    opacity: 0;
+    transition: opacity var(--duration-slow) var(--easing-standard);
+}
+
+#analysisPlotImage[src]:not([src=""]) {
+    opacity: 1;
+}
+
+/* Plot caption */
+.analysis-plot-caption {
+    margin-top: var(--space-5);
+    font-size: 14px;
+    color: #6b7280;
+    font-style: italic;
+}
+
+/* =============================================================================
+ * STATUS MESSAGE
+ * ============================================================================= */
+
+#analysisStatus {
+    text-align: center;
+    margin: var(--space-6) auto;
+    padding: var(--space-4) var(--space-6);
+    background: var(--color-surface-tint);
+    border-radius: var(--radius-md);
+    font-weight: 500;
+    max-width: 600px;
+
+    animation: statusPulse var(--duration-med) var(--easing-standard);
+}
+
+@keyframes statusPulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+#analysisStatus:empty {
+    display: none;
+}
+
+/* =============================================================================
+ * CARD TRANSITIONS
+ * ============================================================================= */
+
+.card {
+    transition: all var(--duration-med) var(--easing-standard);
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+/* Stagger animation for cards when results appear */
+.cards .card {
+    animation: cardFadeIn var(--duration-slow) var(--easing-standard) backwards;
+}
+
+.cards .card:nth-child(1) { animation-delay: 0.05s; }
+.cards .card:nth-child(2) { animation-delay: 0.10s; }
+.cards .card:nth-child(3) { animation-delay: 0.15s; }
+.cards .card:nth-child(4) { animation-delay: 0.20s; }
+.cards .card:nth-child(5) { animation-delay: 0.25s; }
+.cards .card:nth-child(6) { animation-delay: 0.30s; }
+
+@keyframes cardFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* =============================================================================
+ * RECORD BUTTON PULSE
+ * ============================================================================= */
+
+.record-btn[aria-pressed="true"] {
+    animation: recordPulse 1s ease-in-out infinite;
+}
+
+@keyframes recordPulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+    }
+    50% {
+        box-shadow: 0 0 0 15px rgba(239, 68, 68, 0);
+    }
+}
+
+/* =============================================================================
+ * PROGRESS BAR (Optional enhancement)
+ * ============================================================================= */
+
+.score-progress-bar {
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    margin-top: var(--space-3);
+}
+
+.score-progress-fill {
+    height: 100%;
+    background: white;
+    border-radius: var(--radius-full);
+    transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+/* =============================================================================
+ * PLOT MODE TOGGLE BUTTON
+ * ============================================================================= */
+
+.plot-controls {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 1rem;
+}
+
+.plot-toggle-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.plot-toggle-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.plot-toggle-btn:active {
+    transform: translateY(0);
+}
+
+.plot-toggle-btn .toggle-arrow {
+    font-size: 1.2rem;
+    transition: transform 0.3s ease;
+}
+
+.plot-toggle-btn:hover .toggle-arrow {
+    transform: rotate(180deg);
+}
+
+#plotModeLabel {
+    font-family: 'Inter', sans-serif;
+}
+
+/* Articulatory mode indication */
+.plot-toggle-btn[data-mode="articulatory"] {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+}
+
+.plot-toggle-btn[data-mode="articulatory"] .toggle-arrow {
+    transform: rotate(180deg);
+}
