@@ -1,4 +1,5 @@
 // 2초 음성 녹음 후 FastAPI 분석 엔진과 통신
+// Record 2 seconds of audio and send to FastAPI analysis engine
 (function () {
     const RECORDING_DURATION_MS = 2000;
     const btn = document.getElementById('recordBtn');
@@ -78,7 +79,7 @@
 
     const describeMetric = (value, target, sd, { unit = '', decimals = 0 } = {}) => {
         const measured = formatNumber(value, decimals);
-        if (measured === null) return '측정 불가';
+        if (measured === null) return '측정 불가 (Measurement unavailable)';
 
         const unitStr = unit ? ` ${unit}` : '';
         let text = `${measured}${unitStr}`;
@@ -100,14 +101,14 @@
         if (Object.is(diffVal, -0)) diffVal = 0;
         const diffStr = diffVal === 0 ? '0' : `${diffVal > 0 ? '+' : ''}${diffVal}`;
 
-        text += ` (목표 ${targetVal}${unitStr}`;
+        text += ` (목표 ${targetVal}${unitStr} (Target ${targetVal}${unitStr}`;
         if (typeof sd === 'number' && !Number.isNaN(sd)) {
             const sdVal = formatNumber(sd, decimals);
             if (sdVal !== null) {
                 text += ` ±${sdVal}${unitStr}`;
             }
         }
-        text += `, 차이 ${diffStr}${unitStr})`;
+        text += `, 차이 ${diffStr}${unitStr} (Difference ${diffStr}${unitStr}))`;
         return text;
     };
 
@@ -119,7 +120,6 @@
         const gender = details.gender;
         const isDiphthong = details.is_diphthong || false;
 
-        // Diphthong-specific rendering
         if (isDiphthong && details.trajectory && details.scores) {
             const trajectory = details.trajectory || {};
             const scores = details.scores || {};
@@ -129,39 +129,41 @@
             setCard('lips-roundness', 'Direction Score', `${formatNumber(scores.direction, 1) || '?'} / 100`);
             setCard('breathiness', 'Trajectory Info', `${trajectory.num_frames || '?'} frames, ${formatNumber(trajectory.duration, 2) || '?'}s`);
 
-            const genderLabel = gender === 'Male' ? '남성' : gender === 'Female' ? '여성' : gender;
-            setCard('tension', 'Transition', genderLabel ? `예상 성별: ${genderLabel}` : '성별 추정 정보 없음');
+            const genderLabel = gender === 'Male' ? '남성 (Male)' : gender === 'Female' ? '여성 (Female)' : gender;
+            setCard('tension', 'Transition', genderLabel ? `예상 성별: ${genderLabel} (Estimated gender: ${genderLabel})` : '성별 추정 정보 없음 (No gender estimation available)');
 
-            // Show plot with trajectory animation
             if (details.plot_url && plotContainer && plotImage) {
                 plotImage.src = details.plot_url;
-                const captionText = details.vowel_key ? `${details.vowel_key} 이중모음 궤적` : '이중모음 궤적';
+                const captionText = details.vowel_key
+                    ? `${details.vowel_key} 이중모음 궤적 (Diphthong trajectory)`
+                    : '이중모음 궤적 (Diphthong trajectory)';
                 plotImage.alt = captionText;
                 if (plotCaption) plotCaption.textContent = captionText;
                 plotContainer.hidden = false;
 
-                // Trigger trajectory animation
                 if (trajectory.points && trajectory.points.length > 1) {
                     updatePlotTrajectory(trajectory.points);
                 }
             }
         } else {
-            // Monophthong rendering (original logic)
             setCard('tongue-height', 'Tongue Height', describeMetric(formants.f1, reference.f1, reference.f1_sd, { unit: 'Hz' }));
             setCard('tongue-backness', 'Tongue Backness', describeMetric(formants.f2, reference.f2, reference.f2_sd, { unit: 'Hz' }));
             setCard('lips-roundness', 'Lips Roundness', describeMetric(formants.f3, reference.f3, null, { unit: 'Hz' }));
-            setCard('breathiness', 'Breathiness', qualityHint || '녹음 품질 양호');
-            const genderLabel = gender === 'Male' ? '남성' : gender === 'Female' ? '여성' : gender;
-            setCard('tension', 'Tension', genderLabel ? `예상 성별: ${genderLabel}` : '성별 추정 정보 없음');
+            setCard('breathiness', 'Breathiness', qualityHint || '녹음 품질 양호 (Good recording quality)');
+
+            const genderLabel = gender === 'Male' ? '남성 (Male)' : gender === 'Female' ? '여성 (Female)' : gender;
+            setCard('tension', 'Tension', genderLabel ? `예상 성별: ${genderLabel} (Estimated gender: ${genderLabel})` : '성별 추정 정보 없음 (No gender estimation available)');
 
             if (details.plot_url && plotContainer && plotImage) {
                 plotImage.src = details.plot_url;
-                const captionText = details.vowel_key ? `${details.vowel_key} 포만트 위치` : '포만트 위치';
+                const captionText =
+                    details.vowel_key
+                        ? `${details.vowel_key} 포만트 위치 (Formant position)`
+                        : '포만트 위치 (Formant position)';
                 plotImage.alt = captionText;
                 if (plotCaption) plotCaption.textContent = captionText;
                 plotContainer.hidden = false;
 
-                // Trigger plot animation with measured formants
                 if (formants.f1 && formants.f2) {
                     updatePlotAnimation(
                         formants.f1,
@@ -210,7 +212,7 @@
 
         const combinedAdvice = adviceList.length ? adviceList.join(' ') : coaching;
         if (combinedAdvice) {
-            setCard('tension', '코칭', combinedAdvice);
+            setCard('tension', '코칭 (Coaching)', combinedAdvice);
         }
     };
 
@@ -219,10 +221,10 @@
         const type = data.analysis_type;
         if (type === 'vowel') {
             renderVowelCards(data);
-            setCard('total', null, '모음 분석');
+            setCard('total', null, '모음 분석 (Vowel analysis)');
         } else if (type === 'consonant') {
             renderConsonantCards(data);
-            setCard('total', null, '자음 분석');
+            setCard('total', null, '자음 분석 (Consonant analysis)');
         }
     };
 
@@ -230,7 +232,6 @@
         if (!percentEl) return;
         percentEl.textContent = typeof score === 'number' ? `${score}%` : '';
 
-        // Set score level for color coding
         const totalCard = cardMap.get('total')?.card;
         if (totalCard && typeof score === 'number') {
             let level = 'poor';
@@ -239,27 +240,26 @@
             else if (score >= 60) level = 'fair';
             totalCard.setAttribute('data-score-level', level);
 
-            // Also update feedback element
             if (feedbackEl) {
                 feedbackEl.setAttribute('data-score-level', level);
             }
 
-            // Update progress bar
             const progressFill = document.getElementById('scoreProgressFill');
             if (progressFill) {
                 progressFill.style.width = `${score}%`;
             }
         } else {
-            // Reset progress bar when no score
             const progressFill = document.getElementById('scoreProgressFill');
             if (progressFill) {
                 progressFill.style.width = '0%';
             }
         }
     };
+
     const setStatus = (text) => {
         if (statusEl) statusEl.textContent = text || '';
     };
+
     const setFeedback = (input) => {
         if (!feedbackEl) return;
         feedbackEl.innerHTML = '';
@@ -288,11 +288,11 @@
         feedbackEl.appendChild(list);
     };
 
-    // 초기 UI 상태
+    // 초기 UI 상태 (Initial UI state)
+    setStatus('버튼을 눌러 2초간 녹음하세요. (Press the button to record for 2 seconds.)');
     resetCards();
     setScore('');
     setFeedback('');
-    setStatus('버튼을 눌러 2초간 녹음하세요.');
 
     let mediaRecorder;
     let chunks = [];
@@ -305,7 +305,7 @@
         setFeedback('');
         setScore('');
         resetCards();
-        setStatus('녹음 중... (2초)');
+        setStatus('녹음 중... (2초) (Recording… 2 seconds)');
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -321,7 +321,7 @@
                 btn.disabled = false;
                 btn.classList.remove('recording');
                 btn.setAttribute('aria-pressed', 'false');
-                setStatus('분석 중...');
+                setStatus('분석 중... (Analyzing...)');
 
                 stream.getTracks().forEach(track => track.stop());
 
@@ -332,7 +332,7 @@
                         (soundSymbolEl && soundSymbolEl.textContent ? soundSymbolEl.textContent.trim() : '');
 
                     if (!sound) {
-                        setStatus('선택된 발음 기호를 찾을 수 없습니다.');
+                        setStatus('선택된 발음 기호를 찾을 수 없습니다. (Could not find selected phonetic symbol.)');
                         return;
                     }
 
@@ -377,12 +377,12 @@
                     }
                     setFeedback(feedbackItems);
                     renderCardsForAnalysis(data);
-                    setStatus('분석이 완료되었습니다. 다시 녹음하려면 버튼을 누르세요.');
+                    setStatus('분석이 완료되었습니다. 다시 녹음하려면 버튼을 누르세요. (Analysis complete. Press the button to record again.)');
                 } catch (err) {
                     console.error('Failed to send recording for analysis:', err);
-                    const errorMessage = err && err.message ? err.message : '분석 요청에 실패했습니다.';
-                    setStatus(`분석 실패: ${errorMessage}`);
-                    setFeedback([`분석 실패: ${errorMessage}`]);
+                    const errorMessage = err && err.message ? err.message : '분석 요청에 실패했습니다. (Failed to send analysis request.)';
+                    setStatus(`분석 실패: ${errorMessage} (Analysis failed: ${errorMessage})`);
+                    setFeedback([`분석 실패: ${errorMessage} (Analysis failed: ${errorMessage})`]);
                     setScore('');
                     resetCards();
                 }
@@ -399,7 +399,7 @@
             btn.disabled = false;
             btn.classList.remove('recording');
             btn.setAttribute('aria-pressed', 'false');
-            setStatus('마이크 접근에 실패했습니다. 권한을 확인하세요.');
+            setStatus('마이크 접근에 실패했습니다. 권한을 확인하세요. (Failed to access microphone. Check permissions.)');
             resetCards();
         }
     }
