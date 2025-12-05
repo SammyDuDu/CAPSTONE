@@ -25,6 +25,8 @@ DB_URL = os.environ.get(
     "postgresql://capstone_itcd_user:2XLTwuuR3pJw4epFlT7lo71WnsmzuDFU@dpg-d411ot1r0fns739sc58g-a.singapore-postgres.render.com/capstone_itcd"
 )
 
+print(f"DEBUG: Using DB_URL: {DB_URL}")
+
 # =============================================================================
 # APPLICATION SETTINGS
 # =============================================================================
