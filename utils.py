@@ -153,16 +153,20 @@ def resolve_sound_symbol(symbol: str) -> str:
 # ANALYSIS FUNCTIONS
 # =============================================================================
 
-def run_vowel_analysis(audio_path: str, symbol: str) -> dict:
+def run_vowel_analysis(audio_path: str, symbol: str, userid: int = None) -> dict:
     """
     Perform vowel formant analysis on an audio file.
 
     Analyzes F1, F2, F3 formants and compares against reference values.
+    Uses personalized reference if user has completed calibration.
     Generates a vowel space plot if analysis is successful.
+
+    **NEW**: Supports diphthong trajectory analysis (wa, weo, wi, ya, yeo, ui, eui)
 
     Args:
         audio_path: Path to the audio file
-        symbol: Hangul vowel symbol (e.g., 'ㅏ')
+        symbol: Hangul vowel symbol (e.g., 'ㅏ', 'ㅘ')
+        userid: Optional user ID for personalized analysis
 
     Returns:
         Analysis result dictionary containing:
@@ -170,22 +174,126 @@ def run_vowel_analysis(audio_path: str, symbol: str) -> dict:
         - score: 0-100 score
         - feedback: Text feedback
         - details: Detailed formant data and plot URL
+          - For diphthongs: includes trajectory, start_score, end_score, direction_score
 
     Raises:
         ValueError: If analysis fails
     """
+    from personalization import get_personalized_reference
+    from config import DIPHTHONG_TRAJECTORIES
+    from analysis.vowel_v2 import extract_formant_trajectory, score_diphthong_trajectory
+
     vowel_key = VOWEL_SYMBOL_TO_KEY[symbol]
+
+    # Determine if this is a diphthong
+    is_diphthong = vowel_key in DIPHTHONG_TRAJECTORIES
+
+    # First pass: analyze with standard reference to get gender
     result, error = analyze_single_audio(audio_path, vowel_key, return_reason=True)
 
     if error:
         raise ValueError(error)
 
-    # Get reference table based on detected gender
-    ref_table = (
-        STANDARD_MALE_FORMANTS
-        if result.get("gender") == "Male"
-        else STANDARD_FEMALE_FORMANTS
-    )
+    gender = result.get("gender", "Female")
+
+    # Try to get personalized reference for this user
+    personalized_ref = None
+    if userid:
+        personalized_ref = get_personalized_reference(userid, gender)
+
+    # Get reference table for analysis
+    # Use personalized reference if available, otherwise use standard
+    if personalized_ref:
+        ref_table = personalized_ref
+    else:
+        ref_table = (
+            STANDARD_MALE_FORMANTS
+            if gender == "Male"
+            else STANDARD_FEMALE_FORMANTS
+        )
+
+    # === DIPHTHONG TRAJECTORY ANALYSIS ===
+    if is_diphthong:
+        # Extract time-series formant trajectory
+        traj_result = extract_formant_trajectory(audio_path)
+
+        if not traj_result.get('success'):
+            error_msg = traj_result.get('error', 'Trajectory extraction failed')
+            raise ValueError(error_msg)
+
+        # Score the trajectory
+        score_result = score_diphthong_trajectory(
+            traj_result['trajectory'],
+            vowel_key,
+            ref_table
+        )
+
+        # Extract trajectory data for response
+        trajectory_list = traj_result['trajectory']
+        start_formants = score_result['details']['start']
+        end_formants = score_result['details']['end']
+
+        # Generate vowel space plot (use middle point for gender estimation)
+        plot_url = None
+        try:
+            mid_idx = len(trajectory_list) // 2
+            mid_f1 = trajectory_list[mid_idx]['f1']
+            mid_f2 = trajectory_list[mid_idx]['f2']
+
+            filename = f"{uuid4().hex}.png"
+            abs_path = os.path.join(PLOT_OUTPUT_DIR, filename)
+            plot_single_vowel_space(mid_f1, mid_f2, vowel_key, gender, abs_path)
+            plot_url = "/" + abs_path.replace(os.sep, "/")
+        except Exception:
+            plot_url = None
+
+        # Return diphthong analysis result
+        return {
+            "analysis_type": "vowel",
+            "score": safe_float(score_result['score']),
+            "feedback": " ".join(score_result['feedback']),
+            "details": {
+                "symbol": symbol,
+                "vowel_key": vowel_key,
+                "gender": gender,
+                "is_diphthong": True,
+                "trajectory": {
+                    "points": trajectory_list,
+                    "duration": traj_result['duration'],
+                    "num_frames": traj_result['num_frames'],
+                },
+                "scores": {
+                    "total": safe_float(score_result['score']),
+                    "start": safe_float(score_result['start_score']),
+                    "end": safe_float(score_result['end_score']),
+                    "direction": safe_float(score_result['direction_score']),
+                },
+                "formants": {
+                    "start_f1": safe_float(start_formants['f1']),
+                    "start_f2": safe_float(start_formants['f2']),
+                    "end_f1": safe_float(end_formants['f1']),
+                    "end_f2": safe_float(end_formants['f2']),
+                },
+                "reference": {
+                    "start_vowel": DIPHTHONG_TRAJECTORIES[vowel_key]['start'],
+                    "end_vowel": DIPHTHONG_TRAJECTORIES[vowel_key]['end'],
+                    "direction": DIPHTHONG_TRAJECTORIES[vowel_key]['direction'],
+                },
+                "plot_url": plot_url,
+            },
+        }
+
+    # === MONOPHTHONG ANALYSIS (existing logic) ===
+    # Second pass: re-analyze with personalized reference if available
+    if personalized_ref:
+        result, error = analyze_single_audio(
+            audio_path,
+            vowel_key,
+            return_reason=True,
+            custom_ref_table=personalized_ref
+        )
+        if error:
+            raise ValueError(error)
 
     # Generate vowel space plot
     plot_url = None
@@ -325,7 +433,7 @@ def run_consonant_analysis(audio_path: str, symbol: str) -> dict:
         cleanup_temp_file(wav_path)
 
 
-async def analyse_uploaded_audio(audio: UploadFile, symbol: str) -> dict:
+async def analyse_uploaded_audio(audio: UploadFile, symbol: str, userid: int = None) -> dict:
     """
     Main entry point for analyzing uploaded audio.
 
@@ -335,6 +443,7 @@ async def analyse_uploaded_audio(audio: UploadFile, symbol: str) -> dict:
     Args:
         audio: Uploaded audio file
         symbol: Hangul symbol being analyzed
+        userid: Optional user ID for personalized analysis
 
     Returns:
         Analysis result dictionary
@@ -347,7 +456,7 @@ async def analyse_uploaded_audio(audio: UploadFile, symbol: str) -> dict:
 
     try:
         if analysis_kind == "vowel":
-            return await run_in_threadpool(run_vowel_analysis, temp_path, symbol)
+            return await run_in_threadpool(run_vowel_analysis, temp_path, symbol, userid)
         return await run_in_threadpool(run_consonant_analysis, temp_path, symbol)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

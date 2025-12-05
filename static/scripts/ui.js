@@ -71,15 +71,45 @@
     async function handleLogin() {
         const username = (usernameInput && usernameInput.value || '').trim();
         const password = (passwordInput && passwordInput.value || '').trim();
-        if (!username || !password) { alert('Enter username and password'); return; }
+
+        // Clear previous errors
+        const loginError = document.getElementById('loginError');
+        if (loginError) loginError.hidden = true;
+
+        // Validate inputs
+        if (!username || !password) {
+            if (loginError) {
+                loginError.textContent = 'Please enter both username and password';
+                loginError.hidden = false;
+            }
+            return;
+        }
+
+        // Add loading state
+        if (submitLogin) {
+            submitLogin.disabled = true;
+            submitLogin.classList.add('loading');
+        }
+
         try {
             const out = await postJson('/api/auth/login', { username, password });
             sessionStorage.setItem('username', out.user || username);
             sessionStorage.setItem('userid', out.userid || '');
-            // update topbar button to username
+
+            // Clear inputs
+            if (usernameInput) usernameInput.value = '';
+            if (passwordInput) passwordInput.value = '';
+
+            // Update topbar button to username
             if (openBtn) openBtn.textContent = out.user || username;
+
+            // Show success toast
+            if (window.Toast) {
+                window.Toast.success('Welcome back, ' + (out.user || username) + '!', 3000);
+            }
+
             close();
-            
+
             // Check if calibration is needed
             if (out.calibration_complete === false) {
                 // Show calibration modal if not complete
@@ -93,76 +123,126 @@
                 }
             }
         } catch (e) {
-            alert(e.message || 'Login failed');
+            // Show error in modal
+            if (loginError) {
+                loginError.textContent = e.message || 'Login failed';
+                loginError.hidden = false;
+            }
+
+            // Also show toast
+            if (window.Toast) {
+                window.Toast.error(e.message || 'Login failed', 4000);
+            }
+        } finally {
+            // Remove loading state
+            if (submitLogin) {
+                submitLogin.disabled = false;
+                submitLogin.classList.remove('loading');
+            }
         }
     }
 
     async function handleSignup() {
         const username = (usernameInput && usernameInput.value || '').trim();
         const password = (passwordInput && passwordInput.value || '').trim();
-        if (!username || !password) { alert('Enter username and password'); return; }
+
+        // Clear previous errors
+        const signupError = document.getElementById('signupError');
+        if (signupError) signupError.hidden = true;
+
+        // Validate with FormValidator
+        if (window.FormValidator) {
+            const usernameValidation = window.FormValidator.validateUsername(username);
+            if (!usernameValidation.valid) {
+                if (signupError) {
+                    signupError.textContent = usernameValidation.message;
+                    signupError.hidden = false;
+                }
+                return;
+            }
+
+            const passwordValidation = window.FormValidator.validatePassword(password);
+            if (!passwordValidation.valid) {
+                if (signupError) {
+                    signupError.textContent = passwordValidation.message;
+                    signupError.hidden = false;
+                }
+                return;
+            }
+        } else {
+            // Fallback validation
+            if (!username || !password) {
+                if (signupError) {
+                    signupError.textContent = 'Please enter both username and password';
+                    signupError.hidden = false;
+                }
+                return;
+            }
+        }
+
+        // Add loading state
+        if (submitSignup) {
+            submitSignup.disabled = true;
+            submitSignup.classList.add('loading');
+        }
+
         try {
-            const out = await postJson('/api/auth/signup', { username, password });
-            
+            await postJson('/api/auth/signup', { username, password });
+
             // Clear input fields
             if (usernameInput) usernameInput.value = '';
             if (passwordInput) passwordInput.value = '';
-            
+
             // Close login modal immediately
             close();
-            
-            // Show "user created" banner (show it briefly, then show calibration)
-            const userCreatedBanner = document.getElementById('userCreatedBanner');
-            if (userCreatedBanner) {
-                userCreatedBanner.hidden = false;
-                // Wait a moment before auto-login and calibration modal
-                setTimeout(async () => {
-                    // Auto-login the newly created user
-                    try {
-                        const loginOut = await postJson('/api/auth/login', { username, password });
-                        sessionStorage.setItem('username', loginOut.user || username);
-                        sessionStorage.setItem('userid', loginOut.userid || '');
-                        if (openBtn) openBtn.textContent = loginOut.user || username;
-                    } catch (e) {
-                        console.error('Auto-login failed:', e);
-                    }
-                    
-                    // Hide banner and show calibration modal
-                    if (userCreatedBanner) userCreatedBanner.hidden = true;
-                    
-            // Show non-closable calibration modal
-            const calOverlay = document.getElementById('calibrationOverlay');
-            const calModal = document.getElementById('calibrationModal');
-            if (calOverlay && calModal) {
-                // Reset calibration state
-                if (window.resetCalibration) window.resetCalibration();
-                calOverlay.hidden = false;
-                calModal.hidden = false;
-                document.body.style.overflow = 'hidden';
+
+            // Show success toast
+            if (window.Toast) {
+                window.Toast.success('Account created successfully!', 2000);
             }
-                }, 1500); // Show banner for 1.5 seconds
-            } else {
-                // Fallback if banner doesn't exist - proceed with auto-login and modal
+
+            // Wait a moment before auto-login
+            setTimeout(async () => {
                 try {
                     const loginOut = await postJson('/api/auth/login', { username, password });
                     sessionStorage.setItem('username', loginOut.user || username);
                     sessionStorage.setItem('userid', loginOut.userid || '');
                     if (openBtn) openBtn.textContent = loginOut.user || username;
+
+                    // Show calibration modal
+                    const calOverlay = document.getElementById('calibrationOverlay');
+                    const calModal = document.getElementById('calibrationModal');
+                    if (calOverlay && calModal) {
+                        if (window.resetCalibration) window.resetCalibration();
+                        calOverlay.hidden = false;
+                        calModal.hidden = false;
+                        document.body.style.overflow = 'hidden';
+                    }
                 } catch (e) {
                     console.error('Auto-login failed:', e);
+                    if (window.Toast) {
+                        window.Toast.error('Please login with your new account', 4000);
+                    }
                 }
-                const calOverlay = document.getElementById('calibrationOverlay');
-                const calModal = document.getElementById('calibrationModal');
-                if (calOverlay && calModal) {
-                    // Reset calibration state
-                    if (window.resetCalibration) window.resetCalibration();
-                    calOverlay.hidden = false;
-                    calModal.hidden = false;
-                    document.body.style.overflow = 'hidden';
-                }
-            }
+            }, 1000);
+
         } catch (e) {
-            alert(e.message || 'Sign up failed');
+            // Show error in modal
+            if (signupError) {
+                signupError.textContent = e.message || 'Sign up failed';
+                signupError.hidden = false;
+            }
+
+            // Also show toast
+            if (window.Toast) {
+                window.Toast.error(e.message || 'Sign up failed', 4000);
+            }
+        } finally {
+            // Remove loading state
+            if (submitSignup) {
+                submitSignup.disabled = false;
+                submitSignup.classList.remove('loading');
+            }
         }
     }
 

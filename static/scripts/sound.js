@@ -117,20 +117,60 @@
         const reference = details.reference || {};
         const qualityHint = details.quality_hint;
         const gender = details.gender;
+        const isDiphthong = details.is_diphthong || false;
 
-        setCard('tongue-height', 'Tongue Height', describeMetric(formants.f1, reference.f1, reference.f1_sd, { unit: 'Hz' }));
-        setCard('tongue-backness', 'Tongue Backness', describeMetric(formants.f2, reference.f2, reference.f2_sd, { unit: 'Hz' }));
-        setCard('lips-roundness', 'Lips Roundness', describeMetric(formants.f3, reference.f3, null, { unit: 'Hz' }));
-        setCard('breathiness', 'Breathiness', qualityHint || '녹음 품질 양호');
-        const genderLabel = gender === 'Male' ? '남성' : gender === 'Female' ? '여성' : gender;
-        setCard('tension', 'Tension', genderLabel ? `예상 성별: ${genderLabel}` : '성별 추정 정보 없음');
+        // Diphthong-specific rendering
+        if (isDiphthong && details.trajectory && details.scores) {
+            const trajectory = details.trajectory || {};
+            const scores = details.scores || {};
 
-        if (details.plot_url && plotContainer && plotImage) {
-            plotImage.src = details.plot_url;
-            const captionText = details.vowel_key ? `${details.vowel_key} 포만트 위치` : '포만트 위치';
-            plotImage.alt = captionText;
-            if (plotCaption) plotCaption.textContent = captionText;
-            plotContainer.hidden = false;
+            setCard('tongue-height', 'Start Position', `${formatNumber(formants.start_f1, 0) || '?'} Hz → ${formatNumber(formants.end_f1, 0) || '?'} Hz`);
+            setCard('tongue-backness', 'End Position', `${formatNumber(formants.start_f2, 0) || '?'} Hz → ${formatNumber(formants.end_f2, 0) || '?'} Hz`);
+            setCard('lips-roundness', 'Direction Score', `${formatNumber(scores.direction, 1) || '?'} / 100`);
+            setCard('breathiness', 'Trajectory Info', `${trajectory.num_frames || '?'} frames, ${formatNumber(trajectory.duration, 2) || '?'}s`);
+
+            const genderLabel = gender === 'Male' ? '남성' : gender === 'Female' ? '여성' : gender;
+            setCard('tension', 'Transition', genderLabel ? `예상 성별: ${genderLabel}` : '성별 추정 정보 없음');
+
+            // Show plot with trajectory animation
+            if (details.plot_url && plotContainer && plotImage) {
+                plotImage.src = details.plot_url;
+                const captionText = details.vowel_key ? `${details.vowel_key} 이중모음 궤적` : '이중모음 궤적';
+                plotImage.alt = captionText;
+                if (plotCaption) plotCaption.textContent = captionText;
+                plotContainer.hidden = false;
+
+                // Trigger trajectory animation
+                if (trajectory.points && trajectory.points.length > 1) {
+                    updatePlotTrajectory(trajectory.points);
+                }
+            }
+        } else {
+            // Monophthong rendering (original logic)
+            setCard('tongue-height', 'Tongue Height', describeMetric(formants.f1, reference.f1, reference.f1_sd, { unit: 'Hz' }));
+            setCard('tongue-backness', 'Tongue Backness', describeMetric(formants.f2, reference.f2, reference.f2_sd, { unit: 'Hz' }));
+            setCard('lips-roundness', 'Lips Roundness', describeMetric(formants.f3, reference.f3, null, { unit: 'Hz' }));
+            setCard('breathiness', 'Breathiness', qualityHint || '녹음 품질 양호');
+            const genderLabel = gender === 'Male' ? '남성' : gender === 'Female' ? '여성' : gender;
+            setCard('tension', 'Tension', genderLabel ? `예상 성별: ${genderLabel}` : '성별 추정 정보 없음');
+
+            if (details.plot_url && plotContainer && plotImage) {
+                plotImage.src = details.plot_url;
+                const captionText = details.vowel_key ? `${details.vowel_key} 포만트 위치` : '포만트 위치';
+                plotImage.alt = captionText;
+                if (plotCaption) plotCaption.textContent = captionText;
+                plotContainer.hidden = false;
+
+                // Trigger plot animation with measured formants
+                if (formants.f1 && formants.f2) {
+                    updatePlotAnimation(
+                        formants.f1,
+                        formants.f2,
+                        reference.f1,
+                        reference.f2
+                    );
+                }
+            }
         }
     };
 
@@ -189,6 +229,33 @@
     const setScore = (score) => {
         if (!percentEl) return;
         percentEl.textContent = typeof score === 'number' ? `${score}%` : '';
+
+        // Set score level for color coding
+        const totalCard = cardMap.get('total')?.card;
+        if (totalCard && typeof score === 'number') {
+            let level = 'poor';
+            if (score >= 90) level = 'excellent';
+            else if (score >= 75) level = 'good';
+            else if (score >= 60) level = 'fair';
+            totalCard.setAttribute('data-score-level', level);
+
+            // Also update feedback element
+            if (feedbackEl) {
+                feedbackEl.setAttribute('data-score-level', level);
+            }
+
+            // Update progress bar
+            const progressFill = document.getElementById('scoreProgressFill');
+            if (progressFill) {
+                progressFill.style.width = `${score}%`;
+            }
+        } else {
+            // Reset progress bar when no score
+            const progressFill = document.getElementById('scoreProgressFill');
+            if (progressFill) {
+                progressFill.style.width = '0%';
+            }
+        }
     };
     const setStatus = (text) => {
         if (statusEl) statusEl.textContent = text || '';

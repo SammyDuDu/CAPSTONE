@@ -8,3 +8,4 @@ analysis/consonant_kun_output/
 analysis/consonant_yuna_output/
 analysis/batch_out*
 static/images/analysis/*.png
+docs/
