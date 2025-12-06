@@ -71,6 +71,7 @@
  * ============================================================================= */
 
 #analysisFeedback {
+    align-self: center;
     padding: var(--space-6);
     margin: var(--space-6) auto;
     max-width: 680px;
