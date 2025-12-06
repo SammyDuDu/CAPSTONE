@@ -375,6 +375,14 @@ body {
     overflow: hidden;
 }
 
+.hangul-btn[style*="--progress"] {
+    /* New purple border */
+    border-color: #A78BFA; /* Tailwind's violet-400 or a similar shade */
+    /* Maintain the original text-shadow for better contrast against the fill */
+    text-shadow: 0 1px 3px rgba(255, 255, 255, 0.8),
+                 0 0 8px rgba(255, 255, 255, 0.6);
+}
+
 /* Progress indicator - fills from bottom */
 .hangul-btn::before {
     content: '';
@@ -383,9 +391,19 @@ body {
     left: 0;
     right: 0;
     height: var(--progress, 0%);
-    background: var(--gradient-primary);
+    background: linear-gradient(135deg, rgba(166, 83, 255, 0.7) 0%, rgba(255, 102, 219, 0.8) 100%);
     transition: height var(--duration-slow) var(--easing-standard);
     z-index: 0;
+}
+
+.hangul-btn {
+    position: relative;
+    z-index: 1;
+}
+
+.hangul-btn[style*="--progress"] {
+    text-shadow: 0 1px 3px rgba(255, 255, 255, 0.8),
+                 0 0 8px rgba(255, 255, 255, 0.6);
 }
 
 .hangul-btn span,
@@ -411,6 +429,7 @@ body {
     color: #ffffff;
     border-color: var(--color-success);
     animation: celebration var(--duration-slow) var(--easing-bounce);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .hangul-btn.complete::before {
@@ -506,11 +525,44 @@ body {
 
 /* Analysis status and feedback */
 .analysis-status {
-    margin-top: var(--space-lg);
     text-align: center;
-    color: var(--color-text);
-    font-size: 1.1rem;
+    margin: var(--space-6) auto;
+    padding: var(--space-4) var(--space-6);
+    background: var(--color-surface-tint);
+    border-radius: var(--radius-md);
     font-weight: 500;
+    max-width: 600px;
+    width: auto;
+    display: block;
+    animation: statusPulse var(--duration-med) var(--easing-standard);
+}
+
+#analysisStatus {
+    text-align: center !important;
+    margin: var(--space-6) auto !important;
+    padding: var(--space-4) var(--space-6);
+    background: var(--color-surface-tint);
+    border-radius: var(--radius-md);
+    font-weight: 500;
+    max-width: 600px;
+    width: auto !important;
+    display: block;
+    margin-left: auto !important;
+    margin-right: auto !important;
+}
+
+@keyframes statusPulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+#analysisStatus:empty,
+.analysis-status:empty {
+    display: none;
 }
 
 .analysis-feedback {
@@ -814,6 +866,18 @@ body {
     .hangul-btn {
         font-size: 1.5rem;
     }
+
+    .hangul-btn[style*="--progress"] {
+        text-shadow: 0 1px 4px rgba(255, 255, 255, 0.9),
+                     0 0 10px rgba(255, 255, 255, 0.7);
+    }
+
+    .analysis-status,
+    #analysisStatus {
+        margin: var(--space-4) auto;
+        padding: var(--space-3) var(--space-4);
+        font-size: 0.95rem;
+    }
     
     .cards {
         grid-template-columns: repeat(3, 1fr);
@@ -838,6 +902,11 @@ body {
 }
 
 @media (max-width: 480px) {
+
+    .hangul-btn {
+        font-size: 1.25rem;
+    }
+
     .content {
         padding: var(--space-lg) var(--space-md);
     }
@@ -853,6 +922,12 @@ body {
     .card.total {
         grid-column: 1 / -1;
         grid-row: auto;
+    }
+
+    .analysis-status,
+    #analysisStatus {
+        margin: var(--space-3) var(--space-md);
+        width: calc(100% - var(--space-lg));
     }
 }
 
