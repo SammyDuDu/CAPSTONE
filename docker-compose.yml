@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # PostgreSQL Database
+  # 1. PostgreSQL Database (기존 그대로 유지)
   db:
     image: postgres:15-alpine
     container_name: kospa-db
@@ -20,7 +20,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # KoSPA Application
+  # 2. KoSPA Application (포트 설정 변경됨)
   app:
     build:
       context: .
@@ -28,15 +28,33 @@ services:
     container_name: kospa-app
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-kospa}:${POSTGRES_PASSWORD:-kospa123}@db:5432/${POSTGRES_DB:-kospa_db}
-    ports:
-      - "8000:8000"
+    
+    # [변경됨] 외부에는 8000번을 직접 노출하지 않고, 내부적으로만 엽니다.
+    expose:
+      - "8000"
+    
     depends_on:
       db:
         condition: service_healthy
     volumes:
-      # Persist analysis plots (optional, for debugging)
       - ./static/images/analysis:/app/static/images/analysis
     restart: unless-stopped
+
+  # 3. HTTPS-Portal (새로 추가됨: Nginx + SSL 자동화)
+  https-portal:
+    image: steveltn/https-portal:1
+    ports:
+      - "80:80"          # HTTP 접속 허용
+      - "443:443"        # HTTPS 접속 허용 (보안)
+    restart: always
+    environment:
+      # [핵심] kospa.duckdns.org로 접속하면 -> 내부의 app 서비스 8000번 포트로 연결
+      DOMAINS: 'kospa.duckdns.org -> http://app:8000'
+      
+      # 테스트가 아니라 바로 쓰실 거면 production으로 설정
+      STAGE: 'production'
+    depends_on:
+      - app
 
 volumes:
   postgres_data:
