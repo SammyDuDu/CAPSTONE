@@ -47,8 +47,7 @@ app = FastAPI(
         "Analyzes vowel formants and consonant acoustic features "
         "to provide detailed feedback and scoring."
     ),
-    version="2.0.0",
-    root_path="/"
+    version="2.0.0"
 )
 
 
