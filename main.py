@@ -48,6 +48,7 @@ app = FastAPI(
         "to provide detailed feedback and scoring."
     ),
     version="2.0.0",
+    root_path="/"
 )
 
 
