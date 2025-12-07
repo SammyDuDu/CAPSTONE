@@ -377,103 +377,162 @@
         });
     }
 
-    // Calibration modal record button - 3 consecutive recordings
+    // Calibration modal record button - 5 sounds × 3 samples each
     (function initCalibrationRecord() {
         const calBtn = document.getElementById('calibrationRecordBtn');
         const calOverlay = document.getElementById('calibrationOverlay');
         const calModal = document.getElementById('calibrationModal');
         const calPrompt = document.getElementById('calibrationPrompt');
+        const calTitle = calModal ? calModal.querySelector('.modal-title') : null;
         if (!calBtn) return;
 
         // Make overlay non-closable
         if (calOverlay) {
             calOverlay.addEventListener('click', function(e) {
-                e.stopPropagation(); // prevent closing
+                e.stopPropagation();
             });
         }
 
-        // Sound codes for server: 'a', 'e', 'u'
-        // Display texts: "aaa", "eee", "uuu"
-        const soundCodes = ['a', 'e', 'u'];
-        const soundDisplays = ['aaa', 'eee', 'uuu'];
-        let currentIndex = 0;
-        
+        // 5 calibration sounds with 3 samples each
+        // Covers full vowel space: low-central, high-front, high-back, mid-back, mid-front
+        const calibrationSounds = [
+            { code: 'a', display: 'ㅏ (아)', phonetic: 'ah' },
+            { code: 'i', display: 'ㅣ (이)', phonetic: 'ee' },
+            { code: 'u', display: 'ㅜ (우)', phonetic: 'oo' },
+            { code: 'eo', display: 'ㅓ (어)', phonetic: 'uh' },
+            { code: 'e', display: 'ㅔ (에)', phonetic: 'eh' },
+        ];
+        const SAMPLES_PER_SOUND = 3;
+
+        let currentSoundIndex = 0;
+        let currentSampleNum = 1;
+
+        function updatePrompt() {
+            const sound = calibrationSounds[currentSoundIndex];
+            const totalSounds = calibrationSounds.length;
+            const progress = `(${currentSoundIndex + 1}/${totalSounds}) Sample ${currentSampleNum}/3`;
+
+            if (calPrompt) {
+                calPrompt.innerHTML = `Say "<strong>${sound.display}</strong>"<br><span style="font-size: 0.9em; color: var(--color-text-muted);">${progress}</span>`;
+            }
+            if (calTitle) {
+                calTitle.textContent = `Voice Calibration - ${sound.phonetic}`;
+            }
+        }
+
         // Expose reset function globally
         window.resetCalibration = function() {
-            currentIndex = 0;
-            if (calPrompt) calPrompt.textContent = 'Say "' + soundDisplays[0] + '"';
+            currentSoundIndex = 0;
+            currentSampleNum = 1;
+            updatePrompt();
         };
+
         let mediaRecorder;
         let chunks = [];
         let currentStream = null;
 
-        async function uploadCalibrationRecording(blob, soundCode) {
+        async function uploadCalibrationRecording(blob, soundCode, sampleNum) {
             try {
                 const userid = parseInt(sessionStorage.getItem('userid') || '0');
                 if (!userid) {
                     console.error('No userid found');
-                    return;
+                    return null;
                 }
-                
+
                 const formData = new FormData();
-                formData.append('audio', blob, `calibration_${soundCode}.webm`);
+                formData.append('audio', blob, `calibration_${soundCode}_${sampleNum}.webm`);
                 formData.append('sound', soundCode);
                 formData.append('userid', userid.toString());
+                formData.append('sample_num', sampleNum.toString());
 
-                await fetch('/api/calibration', {
+                const response = await fetch('/api/calibration', {
                     method: 'POST',
                     body: formData
                 });
+
+                if (!response.ok) {
+                    throw new Error('Upload failed');
+                }
+
+                return await response.json();
             } catch (err) {
                 console.error('Failed to upload calibration recording:', err);
+                return null;
             }
         }
 
         async function startCalibrationRecording() {
-            if (currentIndex >= soundCodes.length) return;
-            
+            if (currentSoundIndex >= calibrationSounds.length) return;
+
             chunks = [];
             calBtn.disabled = true;
             calBtn.classList.add('recording');
             calBtn.setAttribute('aria-pressed', 'true');
-            
+
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 currentStream = stream;
                 mediaRecorder = new MediaRecorder(stream);
                 mediaRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+
                 mediaRecorder.onstop = async () => {
                     const blob = new Blob(chunks, { type: 'audio/webm' });
-                    const soundCode = soundCodes[currentIndex];
-                    
-                    // Upload to server with sound code ('a', 'e', 'u')
-                    await uploadCalibrationRecording(blob, soundCode);
-                    
+                    const sound = calibrationSounds[currentSoundIndex];
+
+                    // Upload with sample number
+                    const result = await uploadCalibrationRecording(blob, sound.code, currentSampleNum);
+
                     calBtn.disabled = false;
                     calBtn.classList.remove('recording');
                     calBtn.setAttribute('aria-pressed', 'false');
                     stream.getTracks().forEach(t => t.stop());
-                    
-                    currentIndex++;
-                    
-                    if (currentIndex < soundCodes.length) {
-                        // Show next prompt with display text
-                        if (calPrompt) {
-                            calPrompt.textContent = 'Say "' + soundDisplays[currentIndex] + '"';
+
+                    // Show feedback if upload failed
+                    if (!result || !result.ok) {
+                        if (window.Toast) {
+                            window.Toast.error('Recording failed. Please try again.', 3000);
                         }
+                        return; // Don't advance, let user retry
+                    }
+
+                    // Show success feedback
+                    if (window.Toast && result.measured) {
+                        window.Toast.success(`F1: ${result.measured.f1}Hz, F2: ${result.measured.f2}Hz`, 2000);
+                    }
+
+                    // Advance to next sample or sound
+                    if (currentSampleNum < SAMPLES_PER_SOUND) {
+                        currentSampleNum++;
+                        updatePrompt();
                     } else {
-                        // All recordings done - close modal
-                        if (calOverlay) calOverlay.hidden = true;
-                        if (calModal) calModal.hidden = true;
-                        document.body.style.overflow = '';
-                        // Reset for next time
-                        currentIndex = 0;
-                        if (calPrompt) calPrompt.textContent = 'Say "' + soundDisplays[0] + '"';
+                        // Move to next sound
+                        currentSampleNum = 1;
+                        currentSoundIndex++;
+
+                        if (currentSoundIndex < calibrationSounds.length) {
+                            updatePrompt();
+                        } else {
+                            // All calibration complete!
+                            if (calOverlay) calOverlay.hidden = true;
+                            if (calModal) calModal.hidden = true;
+                            document.body.style.overflow = '';
+
+                            if (window.Toast) {
+                                window.Toast.success('Calibration complete! Your voice profile is ready.', 4000);
+                            }
+
+                            // Reset for next time
+                            currentSoundIndex = 0;
+                            currentSampleNum = 1;
+                            updatePrompt();
+                        }
                     }
                 };
+
                 mediaRecorder.start();
-                setTimeout(() => mediaRecorder.stop(), 3000);
+                setTimeout(() => mediaRecorder.stop(), 2500); // 2.5 seconds per sample
             } catch (err) {
+                console.error('Recording error:', err);
                 calBtn.disabled = false;
                 calBtn.classList.remove('recording');
                 calBtn.setAttribute('aria-pressed', 'false');
@@ -481,10 +540,16 @@
                     currentStream.getTracks().forEach(t => t.stop());
                     currentStream = null;
                 }
+                if (window.Toast) {
+                    window.Toast.error('Microphone access denied. Please allow microphone access.', 4000);
+                }
             }
         }
 
         calBtn.addEventListener('click', startCalibrationRecording);
+
+        // Initialize prompt
+        updatePrompt();
     })();
 })();
 

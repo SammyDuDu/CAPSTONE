@@ -11,8 +11,99 @@
     const soundSymbolEl = document.getElementById('soundSymbol');
     const cards = Array.from(document.querySelectorAll('.card[data-feature]'));
     const plotContainer = document.getElementById('analysisPlot');
-    const plotImage = document.getElementById('analysisPlotImage');
     const plotCaption = document.getElementById('analysisPlotCaption');
+
+    // Initialize DualPlotRenderer for side-by-side display
+    let dualPlotRenderer = null;
+    const formantCanvas = document.getElementById('formantCanvas');
+    const articulatoryCanvas = document.getElementById('articulatoryCanvas');
+
+    if (formantCanvas && articulatoryCanvas) {
+        dualPlotRenderer = new DualPlotRenderer('formantCanvas', 'articulatoryCanvas');
+        console.log('[sound.js] DualPlotRenderer initialized');
+
+        // Load calibration data if logged in
+        const userid = parseInt(sessionStorage.getItem('userid') || '0', 10);
+        if (userid > 0) {
+            loadCalibrationData(userid);
+        } else {
+            // Load standard reference vowels for guests
+            loadStandardReferenceVowels();
+        }
+    }
+
+    // Load calibration data and apply to renderer
+    async function loadCalibrationData(userid) {
+        try {
+            const response = await fetch(`/api/formants?userid=${userid}`);
+            if (!response.ok) {
+                loadStandardReferenceVowels();
+                return;
+            }
+
+            const data = await response.json();
+            const formants = data.formants || {};
+            const affineTransform = data.affine_transform;
+
+            console.log('[sound.js] Loaded calibration data:', formants);
+
+            // Apply Affine transform if available
+            if (affineTransform && affineTransform.A && affineTransform.b && dualPlotRenderer) {
+                dualPlotRenderer.setAffineTransform(affineTransform.A, affineTransform.b);
+            }
+
+            // Set calibration points
+            const calibrationPoints = [];
+            const labelMap = { 'a': 'ㅏ', 'i': 'ㅣ', 'u': 'ㅜ', 'eo': 'ㅓ', 'e': 'ㅔ' };
+
+            for (const [sound, calib] of Object.entries(formants)) {
+                if (calib.f1_mean && calib.f2_mean) {
+                    calibrationPoints.push({
+                        f1: calib.f1_mean,
+                        f2: calib.f2_mean,
+                        f1_sd: calib.f1_std || 50,
+                        f2_sd: calib.f2_std || 80,
+                        label: labelMap[sound] || sound
+                    });
+                }
+            }
+
+            if (calibrationPoints.length > 0 && dualPlotRenderer) {
+                dualPlotRenderer.setCalibrationPoints(calibrationPoints);
+                console.log('[sound.js] Calibration points set:', calibrationPoints.length);
+            }
+
+            // Load standard reference vowels
+            loadStandardReferenceVowels();
+        } catch (error) {
+            console.error('[sound.js] Failed to load calibration data:', error);
+            loadStandardReferenceVowels();
+        }
+    }
+
+    // Load standard reference vowels with SD values
+    function loadStandardReferenceVowels() {
+        // Korean vowels with F1, F2, and standard deviations (Female reference)
+        const standardVowels = [
+            { f1: 945, f2: 1582, f1_sd: 83, f2_sd: 141, label: 'ㅏ' },
+            { f1: 317, f2: 2780, f1_sd: 22, f2_sd: 109, label: 'ㅣ' },
+            { f1: 417, f2: 1217, f1_sd: 54, f2_sd: 139, label: 'ㅡ' },
+            { f1: 615, f2: 1096, f1_sd: 63, f2_sd: 99, label: 'ㅓ' },
+            { f1: 453, f2: 947, f1_sd: 63, f2_sd: 124, label: 'ㅗ' },
+            { f1: 389, f2: 1206, f1_sd: 53, f2_sd: 183, label: 'ㅜ' },
+            { f1: 657, f2: 2261, f1_sd: 85, f2_sd: 133, label: 'ㅐ' },
+            { f1: 525, f2: 2277, f1_sd: 82, f2_sd: 149, label: 'ㅔ' },
+            { f1: 825, f2: 1757, f1_sd: 78, f2_sd: 176, label: 'ㅑ' },
+            { f1: 485, f2: 1206, f1_sd: 70, f2_sd: 168, label: 'ㅕ' },
+            { f1: 395, f2: 860, f1_sd: 54, f2_sd: 115, label: 'ㅛ' },
+            { f1: 351, f2: 1437, f1_sd: 42, f2_sd: 227, label: 'ㅠ' }
+        ];
+
+        if (dualPlotRenderer) {
+            dualPlotRenderer.setReferenceVowels(standardVowels);
+            console.log('[sound.js] Standard reference vowels set');
+        }
+    }
 
     const cardMap = new Map();
     const defaultCardState = {};
@@ -40,11 +131,10 @@
 
     const resetPlot = () => {
         if (plotContainer) plotContainer.hidden = true;
-        if (plotImage) {
-            plotImage.removeAttribute('src');
-            plotImage.alt = '';
-        }
         if (plotCaption) plotCaption.textContent = '';
+        if (dualPlotRenderer) {
+            dualPlotRenderer.clearTrajectories();
+        }
     };
 
     const resetCards = () => {
@@ -79,7 +169,7 @@
 
     const describeMetric = (value, target, sd, { unit = '', decimals = 0 } = {}) => {
         const measured = formatNumber(value, decimals);
-        if (measured === null) return '측정 불가 (Measurement unavailable)';
+        if (measured === null) return 'Measurement unavailable (측정 불가)';
 
         const unitStr = unit ? ` ${unit}` : '';
         let text = `${measured}${unitStr}`;
@@ -101,14 +191,14 @@
         if (Object.is(diffVal, -0)) diffVal = 0;
         const diffStr = diffVal === 0 ? '0' : `${diffVal > 0 ? '+' : ''}${diffVal}`;
 
-        text += ` (목표 ${targetVal}${unitStr} (Target ${targetVal}${unitStr}`;
+        text += ` (Target ${targetVal}${unitStr} (목표 ${targetVal}${unitStr})`;
         if (typeof sd === 'number' && !Number.isNaN(sd)) {
             const sdVal = formatNumber(sd, decimals);
             if (sdVal !== null) {
                 text += ` ±${sdVal}${unitStr}`;
             }
         }
-        text += `, 차이 ${diffStr}${unitStr} (Difference ${diffStr}${unitStr}))`;
+        text += `, Difference ${diffStr}${unitStr} (차이 ${diffStr}${unitStr}))`;
         return text;
     };
 
@@ -124,53 +214,108 @@
             const trajectory = details.trajectory || {};
             const scores = details.scores || {};
 
-            setCard('tongue-height', 'Start Position', `${formatNumber(formants.start_f1, 0) || '?'} Hz → ${formatNumber(formants.end_f1, 0) || '?'} Hz`);
-            setCard('tongue-backness', 'End Position', `${formatNumber(formants.start_f2, 0) || '?'} Hz → ${formatNumber(formants.end_f2, 0) || '?'} Hz`);
-            setCard('lips-roundness', 'Direction Score', `${formatNumber(scores.direction, 1) || '?'} / 100`);
-            setCard('breathiness', 'Trajectory Info', `${trajectory.num_frames || '?'} frames, ${formatNumber(trajectory.duration, 2) || '?'}s`);
+            // F1 describes tongue height (high F1 = low tongue)
+            const startHeightDesc = formants.start_f1 > 500 ? 'Low (저모음)' : formants.start_f1 > 350 ? 'Mid (중모음)' : 'High (고모음)';
+            const endHeightDesc = formants.end_f1 > 500 ? 'Low (저모음)' : formants.end_f1 > 350 ? 'Mid (중모음)' : 'High (고모음)';
+            setCard('tongue-height', 'Tongue Height (혀 높이)',
+                `Start: ${formatNumber(formants.start_f1, 0) || '?'} Hz (${startHeightDesc}) → End: ${formatNumber(formants.end_f1, 0) || '?'} Hz (${endHeightDesc})`);
 
-            const genderLabel = gender === 'Male' ? '남성 (Male)' : gender === 'Female' ? '여성 (Female)' : gender;
-            setCard('tension', 'Transition', genderLabel ? `예상 성별: ${genderLabel} (Estimated gender: ${genderLabel})` : '성별 추정 정보 없음 (No gender estimation available)');
+            // F2 describes tongue position (high F2 = front)
+            const startPosDesc = formants.start_f2 > 1800 ? 'Front (전설)' : formants.start_f2 > 1200 ? 'Central (중설)' : 'Back (후설)';
+            const endPosDesc = formants.end_f2 > 1800 ? 'Front (전설)' : formants.end_f2 > 1200 ? 'Central (중설)' : 'Back (후설)';
+            setCard('tongue-backness', 'Tongue Position (혀 위치)',
+                `Start: ${formatNumber(formants.start_f2, 0) || '?'} Hz (${startPosDesc}) → End: ${formatNumber(formants.end_f2, 0) || '?'} Hz (${endPosDesc})`);
 
-            if (details.plot_url && plotContainer && plotImage) {
-                plotImage.src = details.plot_url;
+            const dirScore = formatNumber(scores.direction, 1);
+            const dirQuality = dirScore >= 80 ? 'Excellent (우수)' : dirScore >= 60 ? 'Good (양호)' : 'Needs practice (연습 필요)';
+            setCard('lips-roundness', 'Direction Score (방향 점수)', `${dirScore || '?'} / 100 - ${dirQuality}`);
+            setCard('breathiness', 'Trajectory Info (궤적 정보)', `${trajectory.num_frames || '?'} frames, ${formatNumber(trajectory.duration, 2) || '?'}s duration (지속시간)`);
+
+            const genderLabel = gender === 'Male' ? 'Male (남성)' : gender === 'Female' ? 'Female (여성)' : gender;
+            setCard('tension', 'Voice Analysis (음성 분석)', genderLabel ? `Estimated gender: ${genderLabel}` : 'No gender estimation available (성별 추정 정보 없음)');
+
+            // Show plot container and update dual renderer
+            if (plotContainer) {
                 const captionText = details.vowel_key
-                    ? `${details.vowel_key} 이중모음 궤적 (Diphthong trajectory)`
-                    : '이중모음 궤적 (Diphthong trajectory)';
-                plotImage.alt = captionText;
+                    ? `${details.vowel_key} Diphthong trajectory (이중모음 궤적)`
+                    : 'Diphthong trajectory (이중모음 궤적)';
                 if (plotCaption) plotCaption.textContent = captionText;
                 plotContainer.hidden = false;
 
-                if (trajectory.points && trajectory.points.length > 1) {
-                    updatePlotTrajectory(trajectory.points);
+                // Update DualPlotRenderer with trajectory
+                if (dualPlotRenderer && trajectory.points && trajectory.points.length > 1) {
+                    // Set diphthong start/end references if available
+                    if (details.start_ref && details.end_ref) {
+                        dualPlotRenderer.setDiphthongReferences(details.start_ref, details.end_ref);
+                    }
+
+                    dualPlotRenderer.setPoint({
+                        f1: formants.end_f1 || trajectory.points[trajectory.points.length - 1].f1,
+                        f2: formants.end_f2 || trajectory.points[trajectory.points.length - 1].f2,
+                        trajectory: trajectory.points
+                    });
+                    console.log('[sound.js] DualPlotRenderer updated with diphthong trajectory:', trajectory.points.length, 'points');
                 }
             }
         } else {
-            setCard('tongue-height', 'Tongue Height', describeMetric(formants.f1, reference.f1, reference.f1_sd, { unit: 'Hz' }));
-            setCard('tongue-backness', 'Tongue Backness', describeMetric(formants.f2, reference.f2, reference.f2_sd, { unit: 'Hz' }));
-            setCard('lips-roundness', 'Lips Roundness', describeMetric(formants.f3, reference.f3, null, { unit: 'Hz' }));
-            setCard('breathiness', 'Breathiness', qualityHint || '녹음 품질 양호 (Good recording quality)');
+            // Monophthong analysis
+            // F1: Tongue height description
+            const f1Val = formants.f1;
+            const f1Ref = reference.f1;
+            let f1Hint = '';
+            if (f1Val && f1Ref) {
+                const f1Diff = f1Val - f1Ref;
+                if (Math.abs(f1Diff) <= (reference.f1_sd || 80)) {
+                    f1Hint = ' - Good (양호)';
+                } else if (f1Diff > 0) {
+                    f1Hint = ' - Tongue too low, raise it (혀가 너무 낮음, 올리세요)';
+                } else {
+                    f1Hint = ' - Tongue too high, lower it (혀가 너무 높음, 내리세요)';
+                }
+            }
+            setCard('tongue-height', 'Tongue Height (혀 높이)', describeMetric(formants.f1, reference.f1, reference.f1_sd, { unit: 'Hz' }) + f1Hint);
 
-            const genderLabel = gender === 'Male' ? '남성 (Male)' : gender === 'Female' ? '여성 (Female)' : gender;
-            setCard('tension', 'Tension', genderLabel ? `예상 성별: ${genderLabel} (Estimated gender: ${genderLabel})` : '성별 추정 정보 없음 (No gender estimation available)');
+            // F2: Tongue position description
+            const f2Val = formants.f2;
+            const f2Ref = reference.f2;
+            let f2Hint = '';
+            if (f2Val && f2Ref) {
+                const f2Diff = f2Val - f2Ref;
+                if (Math.abs(f2Diff) <= (reference.f2_sd || 120)) {
+                    f2Hint = ' - Good (양호)';
+                } else if (f2Diff > 0) {
+                    f2Hint = ' - Tongue too front, move back (혀가 너무 앞쪽, 뒤로 이동)';
+                } else {
+                    f2Hint = ' - Tongue too back, move forward (혀가 너무 뒤쪽, 앞으로 이동)';
+                }
+            }
+            setCard('tongue-backness', 'Tongue Position (혀 위치)', describeMetric(formants.f2, reference.f2, reference.f2_sd, { unit: 'Hz' }) + f2Hint);
 
-            if (details.plot_url && plotContainer && plotImage) {
-                plotImage.src = details.plot_url;
-                const captionText =
-                    details.vowel_key
-                        ? `${details.vowel_key} 포만트 위치 (Formant position)`
-                        : '포만트 위치 (Formant position)';
-                plotImage.alt = captionText;
+            setCard('lips-roundness', 'Lips Roundness (입술 모양)', describeMetric(formants.f3, reference.f3, null, { unit: 'Hz' }));
+            setCard('breathiness', 'Recording Quality (녹음 품질)', qualityHint || 'Good recording quality (녹음 품질 양호)');
+
+            const genderLabel = gender === 'Male' ? 'Male (남성)' : gender === 'Female' ? 'Female (여성)' : gender;
+            setCard('tension', 'Voice Analysis (음성 분석)', genderLabel ? `Estimated gender: ${genderLabel}` : 'No gender estimation available (성별 추정 정보 없음)');
+
+            // Show plot container and update dual renderer
+            if (plotContainer) {
+                const captionText = details.vowel_key
+                    ? `${details.vowel_key} Formant position (포만트 위치)`
+                    : 'Formant position (포만트 위치)';
                 if (plotCaption) plotCaption.textContent = captionText;
                 plotContainer.hidden = false;
 
-                if (formants.f1 && formants.f2) {
-                    updatePlotAnimation(
-                        formants.f1,
-                        formants.f2,
-                        reference.f1,
-                        reference.f2
-                    );
+                // Update DualPlotRenderer with monophthong data
+                if (dualPlotRenderer && formants.f1 && formants.f2) {
+                    dualPlotRenderer.setPoint({
+                        f1: formants.f1,
+                        f2: formants.f2,
+                        targetF1: reference.f1,
+                        targetF2: reference.f2,
+                        targetF1_sd: reference.f1_sd,
+                        targetF2_sd: reference.f2_sd
+                    });
+                    console.log('[sound.js] DualPlotRenderer updated with monophthong data');
                 }
             }
         }

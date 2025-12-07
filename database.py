@@ -197,19 +197,20 @@ def get_calibration_count(user_id: int) -> int:
     """
     Get number of completed calibration sounds for a user.
 
-    Calibration requires 3 sounds: 'a', 'e', 'u'
+    Calibration requires 5 sounds: 'a', 'i', 'u', 'eo', 'e'
+    (ㅏ, ㅣ, ㅜ, ㅓ, ㅔ)
 
     Args:
         user_id: User's database ID
 
     Returns:
-        Count of distinct calibration sounds (0-3)
+        Count of distinct calibration sounds (0-5)
     """
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT COUNT(DISTINCT sound) FROM formants "
-                "WHERE userid = %s AND sound IN ('a', 'e', 'u')",
+                "WHERE userid = %s AND sound IN ('a', 'i', 'u', 'eo', 'e')",
                 (user_id,)
             )
             return cur.fetchone()[0] or 0
@@ -258,7 +259,7 @@ def save_calibration(user_id: int, sound: str, f1_mean: float, f2_mean: float,
 
     Args:
         user_id: User's database ID
-        sound: Calibration sound ('a', 'e', or 'u')
+        sound: Calibration sound ('a', 'i', 'u', 'eo', 'e')
         f1_mean: Mean F1 formant frequency
         f2_mean: Mean F2 formant frequency
         f1_std: Standard deviation of F1
@@ -279,3 +280,84 @@ def save_calibration(user_id: int, sound: str, f1_mean: float, f2_mean: float,
                 (user_id, sound, f1_mean, f2_mean, f1_std, f2_std)
             )
             conn.commit()
+
+
+def save_calibration_sample(user_id: int, sound: str, sample_num: int,
+                            f1: float, f2: float) -> None:
+    """
+    Save individual calibration sample (for 3-repeat calibration).
+
+    Args:
+        user_id: User's database ID
+        sound: Calibration sound ('a', 'i', 'u', 'eo', 'e')
+        sample_num: Sample number (1, 2, or 3)
+        f1: F1 formant frequency
+        f2: F2 formant frequency
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            # Upsert sample data
+            cur.execute(
+                """
+                INSERT INTO formant_samples (userid, sound, sample_num, f1, f2)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (userid, sound, sample_num)
+                DO UPDATE SET f1 = EXCLUDED.f1, f2 = EXCLUDED.f2
+                """,
+                (user_id, sound, sample_num, f1, f2)
+            )
+            conn.commit()
+
+
+def get_calibration_samples(user_id: int, sound: str) -> list:
+    """
+    Get all calibration samples for a sound.
+
+    Returns:
+        List of {'sample_num': int, 'f1': float, 'f2': float}
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT sample_num, f1, f2 FROM formant_samples "
+                "WHERE userid = %s AND sound = %s ORDER BY sample_num",
+                (user_id, sound)
+            )
+            rows = cur.fetchall() or []
+            return [{'sample_num': r[0], 'f1': r[1], 'f2': r[2]} for r in rows]
+
+
+def finalize_calibration_sound(user_id: int, sound: str) -> dict:
+    """
+    Calculate mean and std from 3 samples and save to formants table.
+
+    Returns:
+        {'f1_mean': float, 'f2_mean': float, 'f1_std': float, 'f2_std': float}
+        or None if not enough samples
+    """
+    import numpy as np
+
+    samples = get_calibration_samples(user_id, sound)
+    if len(samples) < 3:
+        return None
+
+    f1_values = [s['f1'] for s in samples]
+    f2_values = [s['f2'] for s in samples]
+
+    f1_mean = float(np.mean(f1_values))
+    f2_mean = float(np.mean(f2_values))
+    f1_std = float(np.std(f1_values, ddof=1))  # Sample std
+    f2_std = float(np.std(f2_values, ddof=1))
+
+    # Ensure minimum std (avoid division by zero)
+    f1_std = max(f1_std, 20.0)
+    f2_std = max(f2_std, 30.0)
+
+    save_calibration(user_id, sound, f1_mean, f2_mean, f1_std, f2_std)
+
+    return {
+        'f1_mean': f1_mean,
+        'f2_mean': f2_mean,
+        'f1_std': f1_std,
+        'f2_std': f2_std
+    }
