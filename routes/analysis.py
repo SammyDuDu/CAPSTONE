@@ -19,6 +19,10 @@ from fastapi import APIRouter, UploadFile, Form, HTTPException
 from database import (
     user_exists,
     save_calibration,
+    save_calibration_sample,
+    get_calibration_samples,
+    finalize_calibration_sound,
+    get_calibration_count,
     update_progress,
 )
 from utils import (
@@ -42,24 +46,31 @@ router = APIRouter(prefix="/api", tags=["Analysis"])
 async def calibration_upload(
     audio: UploadFile,
     sound: Annotated[str, Form()],
-    userid: Annotated[int, Form()]
+    userid: Annotated[int, Form()],
+    sample_num: Annotated[int, Form()] = 1
 ):
     """
     Save calibration recording for personalized analysis.
 
     Calibration captures the user's voice characteristics for
-    better scoring accuracy. Requires 3 sounds: 'a', 'e', 'u'.
+    better scoring accuracy. Requires 5 sounds with 3 samples each:
+    'a' (ㅏ), 'i' (ㅣ), 'u' (ㅜ), 'eo' (ㅓ), 'e' (ㅔ)
 
     Args:
         audio: Audio file (webm/wav)
-        sound: Calibration sound ('a', 'e', or 'u')
+        sound: Calibration sound ('a', 'i', 'u', 'eo', 'e')
         userid: User's database ID
+        sample_num: Sample number (1, 2, or 3)
 
     Returns:
         - ok: Success status
         - message: Status message
         - sound: The calibration sound
-        - userid: User ID
+        - sample_num: Current sample number
+        - samples_completed: Number of samples for this sound
+        - sound_complete: Whether all 3 samples collected
+        - calibration_complete: Whether all 5 sounds calibrated
+        - measured: Formant measurements
 
     Raises:
         HTTPException 400: If no audio or invalid sound
@@ -68,11 +79,19 @@ async def calibration_upload(
     if not audio.filename:
         raise HTTPException(status_code=400, detail="No audio file provided.")
 
-    # Validate calibration sound
-    if sound not in ['a', 'e', 'u']:
+    # Validate calibration sound (5 vowels for full coverage)
+    valid_sounds = ['a', 'i', 'u', 'eo', 'e']
+    if sound not in valid_sounds:
         raise HTTPException(
             status_code=400,
-            detail="Invalid calibration sound. Expected: 'a', 'e', or 'u'"
+            detail=f"Invalid calibration sound. Expected one of: {valid_sounds}"
+        )
+
+    # Validate sample number
+    if sample_num not in [1, 2, 3]:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid sample number. Expected: 1, 2, or 3"
         )
 
     # Verify user exists
@@ -83,20 +102,17 @@ async def calibration_upload(
     temp_audio = await save_upload_to_temp(audio)
 
     try:
-        # Convert sound symbol to vowel key
-        # 'a' -> 'a (아)', 'e' -> 'eo (어)', 'u' -> 'o (오)'
-        # Note: 'e' is mapped to 'eo' and 'u' to 'o' for backward compatibility
+        # Map sound codes to vowel keys and symbols
         sound_map = {
-            'a': 'a (아)',
-            'e': 'eo (어)',  # 'e' represents 'ㅓ' (eo)
-            'u': 'o (오)',   # 'u' represents 'ㅗ' (o)
+            'a': ('a (아)', 'ㅏ'),
+            'i': ('i (이)', 'ㅣ'),
+            'u': ('u (우)', 'ㅜ'),
+            'eo': ('eo (어)', 'ㅓ'),
+            'e': ('e (에)', 'ㅔ'),
         }
-        vowel_key = sound_map.get(sound)
+        vowel_key, symbol = sound_map.get(sound)
 
-        # Run vowel analysis to extract actual formants
-        # Note: We use the symbol directly without error checking since we validated it
-        symbol_map = {'a': 'ㅏ', 'e': 'ㅓ', 'u': 'ㅗ'}
-        symbol = symbol_map.get(sound)
+        # Run vowel analysis to extract formants
         result = run_vowel_analysis(temp_audio, symbol)
 
         if result.get('error'):
@@ -105,32 +121,53 @@ async def calibration_upload(
                 detail=f"Calibration analysis failed: {result['error']}"
             )
 
-        # Extract formant values from analysis
+        # Extract formant values
         details = result.get('details', {})
         formants = details.get('formants', {})
 
-        f1_mean = formants.get('f1', 500)  # fallback to 500 if missing
-        f2_mean = formants.get('f2', 1500)  # fallback to 1500 if missing
+        f1 = formants.get('f1')
+        f2 = formants.get('f2')
 
-        # Use conservative standard deviations for calibration
-        # (will be refined if we collect multiple samples per vowel)
-        f1_std = 80
-        f2_std = 120
+        if f1 is None or f2 is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Could not extract formants. Please try again with clearer audio."
+            )
 
-        # Save calibration data
-        save_calibration(userid, sound, f1_mean, f2_mean, f1_std, f2_std)
+        # Save this sample
+        save_calibration_sample(userid, sound, sample_num, f1, f2)
+
+        # Check how many samples we have for this sound
+        samples = get_calibration_samples(userid, sound)
+        samples_completed = len(samples)
+        sound_complete = samples_completed >= 3
+
+        # If we have 3 samples, finalize this sound's calibration
+        final_stats = None
+        if sound_complete:
+            final_stats = finalize_calibration_sound(userid, sound)
+
+        # Check overall calibration progress
+        calibration_count = get_calibration_count(userid)
+        calibration_complete = calibration_count >= 5
 
         return {
             "ok": True,
-            "message": f"Calibration recording for '{sound}' saved",
+            "message": f"Sample {sample_num} for '{sound}' saved",
             "sound": sound,
+            "sample_num": sample_num,
+            "samples_completed": samples_completed,
+            "sound_complete": sound_complete,
+            "calibration_count": calibration_count,
+            "calibration_complete": calibration_complete,
             "userid": userid,
             "measured": {
-                "f1": round(f1_mean, 1),
-                "f2": round(f2_mean, 1),
+                "f1": round(f1, 1),
+                "f2": round(f2, 1),
                 "gender": details.get('gender', 'Unknown'),
                 "f0": round(formants.get('f0', 0), 1) if formants.get('f0') else None
-            }
+            },
+            "final_stats": final_stats  # Mean/SD if sound complete
         }
 
     finally:

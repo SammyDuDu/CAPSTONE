@@ -48,21 +48,19 @@
         </div>
     </div>
 
-    <div class="analysis-plot" id="analysisPlot" hidden>
-        <div class="plot-controls">
-            <button class="plot-toggle-btn" id="plotModeToggle" title="Switch plot display mode">
-                <span id="plotModeLabel">Formant Chart</span>
-                <span class="toggle-arrow">⇄</span>
-            </button>
-        </div>
-        <div style="position: relative; display: inline-block;">
-            <img id="analysisPlotImage" alt="Vowel placement chart">
-            <canvas id="plotCanvas" style="position: absolute; top: 0; left: 0; pointer-events: none;"></canvas>
+    <div class="analysis-plot-container" id="analysisPlot" hidden>
+        <div class="dual-plot-wrapper">
+            <div class="plot-panel">
+                <canvas id="formantCanvas"></canvas>
+            </div>
+            <div class="plot-panel">
+                <canvas id="articulatoryCanvas"></canvas>
+            </div>
         </div>
         <div class="analysis-plot-caption" id="analysisPlotCaption"></div>
     </div>
 
-    <script src="{{ url_for('static', path='scripts/plot-animation.js') }}"></script>
+    <script src="{{ url_for('static', path='scripts/dual-plot-renderer.js') }}"></script>
     <script src="{{ url_for('static', path='scripts/sound.js') }}"></script>
     <script>
         (function () {

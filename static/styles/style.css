@@ -704,9 +704,49 @@ body {
 }
 
 /* ============================================================================
-   Analysis Plot
+   Analysis Plot - Dual Canvas Layout
    ============================================================================ */
 
+.analysis-plot-container {
+    margin: var(--space-2xl) auto;
+    max-width: 900px;
+    text-align: center;
+}
+
+.dual-plot-wrapper {
+    display: flex;
+    gap: var(--space-md);
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.plot-panel {
+    background: var(--color-surface);
+    border: 2px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-sm);
+    box-shadow: var(--shadow-md);
+    transition: all var(--duration-med) var(--easing-standard);
+}
+
+.plot-panel:hover {
+    border-color: var(--color-primary-light);
+    box-shadow: var(--shadow-lg);
+}
+
+.plot-panel canvas {
+    display: block;
+    border-radius: var(--radius-sm);
+}
+
+.analysis-plot-caption {
+    font-size: 1rem;
+    color: var(--color-text-muted);
+    font-weight: 500;
+    margin-top: var(--space-md);
+}
+
+/* Legacy single plot support */
 .analysis-plot {
     margin: var(--space-2xl) auto;
     max-width: 600px;
@@ -721,10 +761,22 @@ body {
     margin-bottom: var(--space-md);
 }
 
-.analysis-plot-caption {
-    font-size: 1rem;
-    color: var(--color-text-muted);
-    font-weight: 500;
+/* Responsive: Stack vertically on narrow screens */
+@media (max-width: 900px) {
+    .dual-plot-wrapper {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .plot-panel {
+        width: 100%;
+        max-width: 450px;
+    }
+
+    .plot-panel canvas {
+        width: 100%;
+        height: auto;
+    }
 }
 
 /* ============================================================================

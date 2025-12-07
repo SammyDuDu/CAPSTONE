@@ -46,12 +46,13 @@ def calculate_scaling_factors(
         >>> calculate_scaling_factors(user_calib, standard)
         (0.984, 0.980)
     """
-    # Map calibration sounds to vowel keys
-    # 'a' -> 'a (아)', 'e' -> 'eo (어)', 'u' -> 'o (오)'
+    # Map calibration sounds to vowel keys (5 vowels for full coverage)
     sound_to_key = {
         'a': 'a (아)',
-        'e': 'eo (어)',
-        'u': 'o (오)'
+        'i': 'i (이)',
+        'u': 'u (우)',
+        'eo': 'eo (어)',
+        'e': 'e (에)',
     }
 
     f1_ratios = []
@@ -117,8 +118,8 @@ def get_personalized_reference(
     # Fetch user calibration data
     user_calib = get_user_formants(userid)
 
-    # Check if calibration is complete (need all 3: a, e, u)
-    required_sounds = {'a', 'e', 'u'}
+    # Check if calibration is complete (need all 5: a, i, u, eo, e)
+    required_sounds = {'a', 'i', 'u', 'eo', 'e'}
     if not user_calib or not required_sounds.issubset(user_calib.keys()):
         return None  # Calibration incomplete
 
@@ -147,8 +148,10 @@ def get_personalized_reference(
     # Override with actual calibration values (more accurate)
     sound_to_key = {
         'a': 'a (아)',
-        'e': 'eo (어)',
-        'u': 'o (오)'
+        'i': 'i (이)',
+        'u': 'u (우)',
+        'eo': 'eo (어)',
+        'e': 'e (에)',
     }
 
     for sound, calib_data in user_calib.items():
@@ -157,8 +160,11 @@ def get_personalized_reference(
             # Use measured values directly for calibration vowels
             personalized_ref[vowel_key]['f1'] = calib_data['f1_mean']
             personalized_ref[vowel_key]['f2'] = calib_data['f2_mean']
-            personalized_ref[vowel_key]['f1_sd'] = calib_data['f1_std']
-            personalized_ref[vowel_key]['f2_sd'] = calib_data['f2_std']
+            # Use personalized SD from 3-repeat calibration
+            if calib_data.get('f1_std'):
+                personalized_ref[vowel_key]['f1_sd'] = calib_data['f1_std']
+            if calib_data.get('f2_std'):
+                personalized_ref[vowel_key]['f2_sd'] = calib_data['f2_std']
 
     return personalized_ref
 
@@ -214,6 +220,9 @@ def calibrate_affine(
 
     Solves: [x, y]ᵀ ≈ A · [F1, F2]ᵀ + b
 
+    With 5 calibration vowels, we get a more robust estimation that covers
+    the full vowel space (front/back, high/low).
+
     Args:
         user_calib: User calibration data
             {'a': {'f1_mean': 920, 'f2_mean': 1550, ...}, ...}
@@ -226,11 +235,13 @@ def calibrate_affine(
         >>> A, b = calibrate_affine(user_calib)
         >>> x, y = A @ [f1, f2] + b
     """
-    # Need at least 3 calibration vowels for robust estimation
+    # 5 calibration vowels for robust estimation
     sound_to_key = {
-        'a': 'a (아)',
-        'e': 'eo (어)',
-        'u': 'o (오)'
+        'a': 'a (아)',      # low-central
+        'i': 'i (이)',      # high-front
+        'u': 'u (우)',      # high-back
+        'eo': 'eo (어)',    # mid-back
+        'e': 'e (에)',      # mid-front
     }
 
     F_matrix = []  # [[F1, F2], ...]

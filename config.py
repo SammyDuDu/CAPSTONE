@@ -19,10 +19,10 @@ import os
 # =============================================================================
 
 # Database URL from environment variable
-# Falls back to Render PostgreSQL for backward compatibility
+# Defaults to Docker compose service (db:5432)
 DB_URL = os.environ.get(
     "DATABASE_URL",
-    "postgresql://capstone_itcd_user:2XLTwuuR3pJw4epFlT7lo71WnsmzuDFU@dpg-d411ot1r0fns739sc58g-a.singapore-postgres.render.com/capstone_itcd"
+    "postgresql://kospa:kospa123@db:5432/kospa_db"
 )
 
 print(f"DEBUG: Using DB_URL: {DB_URL}")
