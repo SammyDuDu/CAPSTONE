@@ -32,6 +32,7 @@ Usage:
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from routes import pages_router, auth_router, analysis_router
 
@@ -54,6 +55,10 @@ app = FastAPI(
 # =============================================================================
 # MIDDLEWARE CONFIGURATION
 # =============================================================================
+
+# Proxy headers middleware for HTTPS behind nginx
+# This ensures request.url.scheme reflects the original protocol
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["*"])
 
 # CORS middleware for cross-origin requests
 # Configure for production: replace "*" with specific origins

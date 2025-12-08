@@ -148,6 +148,8 @@ Organized API endpoints:
 
 ## AWS EC2 Deployment
 
+### Option 1 – Development (HTTP only)
+
 1. Launch EC2 instance (Ubuntu 22.04, t2.small or larger)
 2. Install Docker:
    ```bash
@@ -159,29 +161,80 @@ Organized API endpoints:
    ```bash
    git clone <repository-url>
    cd CAPSTONE
-   cp .env.docker .env
    docker compose up -d --build
    ```
 4. Configure Security Group: Allow inbound TCP port 8000
 5. Access via: `http://<EC2-Public-IP>:8000`
 
-**The steps for a manual update are:**
+### Option 2 – Production (HTTPS with Nginx + SSL)
 
-1.  **Commit and Push** code changes to your `main` branch on GitHub.
-2.  **SSH** into the EC2 instance (`ssh -i /path/to/your/keyfile.pem ubuntu@ec2-54-252-177-40.ap-southeast-2.compute.amazonaws.com`).
-3.  **Pull changes** and restart the containers:
-    ```bash
-    cd ~/CAPSTONE # Go to your project directory
-    git pull origin main # Get the latest code
-    docker compose up -d --build # Rebuild images and restart services
+**Required for microphone access** - browsers require HTTPS for `getUserMedia()`.
+
+1. **Setup DuckDNS (free domain)**
+   - Go to https://www.duckdns.org and create a subdomain
+   - Point it to your EC2 Public IP
+
+2. **Install Docker on EC2:**
+   ```bash
+   sudo apt-get update
+   sudo apt-get install -y docker.io docker-compose-v2
+   sudo systemctl start docker && sudo systemctl enable docker
+   sudo usermod -aG docker $USER
+   newgrp docker
+   ```
+
+3. **Configure Security Group:**
+   - Allow inbound TCP port **80** (HTTP - for Let's Encrypt)
+   - Allow inbound TCP port **443** (HTTPS)
+
+4. **Clone and setup:**
+   ```bash
+   git clone <repository-url>
+   cd CAPSTONE
+   ```
+
+5. **Get SSL Certificate:**
+   ```bash
+   chmod +x init-ssl.sh
+   ./init-ssl.sh your-domain.duckdns.org your-email@example.com
+   ```
+
+6. **Start production server:**
+   ```bash
+   docker compose -f docker-compose.prod.yml up -d --build
+   ```
+
+7. Access via: `https://your-domain.duckdns.org`
+
+### Manual Update Steps
+
+1. **Commit and Push** code changes to your `main` branch on GitHub
+2. **SSH** into EC2 instance
+3. **Pull changes** and restart:
+   ```bash
+   cd ~/CAPSTONE
+   git pull origin main
+   # For development:
+   docker compose up -d --build
+   # For production (HTTPS):
+   docker compose -f docker-compose.prod.yml up -d --build
+   ```
+
+## Production Files
+
+| File | Description |
+|------|-------------|
+| `docker-compose.prod.yml` | Production setup with Nginx + Certbot |
+| `nginx/nginx.prod.conf` | HTTPS reverse proxy configuration |
+| `init-ssl.sh` | SSL certificate initialization script |
 
 ## Production Notes
 
+- Microphone requires HTTPS - use production deployment for full functionality
+- SSL certificates auto-renew via Certbot (90-day validity)
 - Set specific CORS origins in `main.py` (replace `"*"`)
 - Implement password hashing (bcrypt/argon2) in `database.py`
 - Add plot cleanup cron job for `/static/images/analysis/`
-- Configure HTTPS with reverse proxy (nginx + Let's Encrypt)
-- Use AWS RDS for production database
 
 ## Documentation
 

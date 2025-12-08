@@ -9,3 +9,6 @@ analysis/consonant_yuna_output/
 analysis/batch_out*
 static/images/analysis/*.png
 docs/
+
+# SSL certificates (generated on server)
+certbot/
