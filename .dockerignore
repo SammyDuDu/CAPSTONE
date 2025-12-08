@@ -38,3 +38,6 @@ render.yaml
 
 # Generated analysis plots (will be created at runtime)
 static/images/analysis/*.png
+
+# SSL certificates (generated on server)
+certbot/
