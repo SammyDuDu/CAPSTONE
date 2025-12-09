@@ -15,6 +15,10 @@
             </div>
             <div class="brand">KoSPA</div>
             <div class="right-side">
+                <button class="recalibrate-btn" id="recalibrateBtn" hidden>
+                    <span class="btn-icon">🎤</span>
+                    <span class="btn-text">Recalibrate</span>
+                </button>
                 <button class="login-btn" id="openLogin">log in</button>
             </div>
         </div>
@@ -39,9 +43,10 @@
         <!-- Toast notification container -->
         <div class="toast-container" id="toastContainer"></div>
 
-        <!-- Non-closable voice calibration modal -->
+        <!-- Voice calibration modal with close button -->
         <div class="overlay" id="calibrationOverlay" hidden></div>
         <div class="modal" id="calibrationModal" hidden>
+            <button class="modal-close" id="closeCalibration" aria-label="Close calibration">✕</button>
             <div class="modal-title" style="text-align: center;">Record three basic sounds to calibrate the model</div>
             <div class="modal-body">
                 <div id="calibrationPrompt" class="calibration-prompt">Say "aaa"</div>

@@ -17,6 +17,7 @@
     const changePasswordBtn = document.getElementById('changePassword');
     const logoutBtn = document.getElementById('logoutBtn');
     const newPasswordInput = document.getElementById('newPassword');
+    const recalibrateBtn = document.getElementById('recalibrateBtn');
 
     function open() {
         if (overlay) overlay.hidden = false;
@@ -68,6 +69,20 @@
         return res.json();
     }
 
+    // Update UI when logged in
+    function updateLoginState(username, showRecalibrate = true) {
+        if (openBtn) openBtn.textContent = username;
+        
+        // Show/hide recalibrate button
+        if (recalibrateBtn) {
+            if (showRecalibrate && username) {
+                recalibrateBtn.hidden = false;
+            } else {
+                recalibrateBtn.hidden = true;
+            }
+        }
+    }
+
     async function handleLogin() {
         const username = (usernameInput && usernameInput.value || '').trim();
         const password = (passwordInput && passwordInput.value || '').trim();
@@ -100,8 +115,8 @@
             if (usernameInput) usernameInput.value = '';
             if (passwordInput) passwordInput.value = '';
 
-            // Update topbar button to username
-            if (openBtn) openBtn.textContent = out.user || username;
+            // Update UI
+            updateLoginState(out.user || username);
 
             // Show success toast
             if (window.Toast) {
@@ -112,11 +127,16 @@
 
             // Check if calibration is needed
             if (out.calibration_complete === false) {
-                // Show calibration modal if not complete
+                // Show calibration modal if not complete (initial signup - non-closable)
                 const calOverlay = document.getElementById('calibrationOverlay');
                 const calModal = document.getElementById('calibrationModal');
                 if (calOverlay && calModal) {
                     if (window.resetCalibration) window.resetCalibration();
+                    
+                    // Mark as initial signup (non-closable)
+                    calOverlay.classList.remove('closable');
+                    delete calOverlay.dataset.isRecalibration;
+                    
                     calOverlay.hidden = false;
                     calModal.hidden = false;
                     document.body.style.overflow = 'hidden';
@@ -207,13 +227,18 @@
                     const loginOut = await postJson('/api/auth/login', { username, password });
                     sessionStorage.setItem('username', loginOut.user || username);
                     sessionStorage.setItem('userid', loginOut.userid || '');
-                    if (openBtn) openBtn.textContent = loginOut.user || username;
+                    updateLoginState(loginOut.user || username);
 
-                    // Show calibration modal
+                    // Show calibration modal (initial signup - non-closable)
                     const calOverlay = document.getElementById('calibrationOverlay');
                     const calModal = document.getElementById('calibrationModal');
                     if (calOverlay && calModal) {
                         if (window.resetCalibration) window.resetCalibration();
+                        
+                        // Mark as initial signup (non-closable)
+                        calOverlay.classList.remove('closable');
+                        delete calOverlay.dataset.isRecalibration;
+                        
                         calOverlay.hidden = false;
                         calModal.hidden = false;
                         document.body.style.overflow = 'hidden';
@@ -265,6 +290,7 @@
 
     function handleLogout() {
         sessionStorage.removeItem('username');
+        sessionStorage.removeItem('userid');
         // Clear cached progress for previous user
         try {
             const keys = Object.keys(sessionStorage);
@@ -278,17 +304,54 @@
                 btn.classList.remove('complete');
             });
         }
-        if (openBtn) openBtn.textContent = 'log in';
+        updateLoginState(null, false);
         close();
     }
 
     if (changePasswordBtn) changePasswordBtn.addEventListener('click', handleChangePassword);
     if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
 
-    // On load, if session has username, show it on the button
+    // Recalibrate button handler
+    if (recalibrateBtn) {
+        recalibrateBtn.addEventListener('click', function() {
+            const userid = parseInt(sessionStorage.getItem('userid') || '0', 10);
+            if (!userid) {
+                if (window.Toast) {
+                    window.Toast.error('Please log in to recalibrate', 3000);
+                }
+                return;
+            }
+
+            // Open calibration modal (make it closable for recalibration)
+            const calOverlay = document.getElementById('calibrationOverlay');
+            const calModal = document.getElementById('calibrationModal');
+            if (calOverlay && calModal) {
+                if (window.resetCalibration) window.resetCalibration();
+                
+                // Mark as closable (for recalibration, not initial signup)
+                calOverlay.classList.add('closable');
+                calOverlay.dataset.isRecalibration = 'true';
+                
+                calOverlay.hidden = false;
+                calModal.hidden = false;
+                document.body.style.overflow = 'hidden';
+                
+                if (window.Toast) {
+                    window.Toast.info('Starting voice recalibration...', 2000);
+                }
+            }
+        });
+    }
+
+    // NOTE: The calibration modal close logic has been MOVED inside the initCalibrationRecord
+    // IIFE below so it has access to the calBtn and currentStream variables.
+
+    // On load, if session has username, show it on the button and recalibrate button
     (function initTopbarUser() {
         const u = sessionStorage.getItem('username');
-        if (u && openBtn) openBtn.textContent = u;
+        if (u) {
+            updateLoginState(u);
+        }
     })();
 
     // Progress coloring on main page with session cache
@@ -346,7 +409,7 @@
         })();
     })();
 
-    // Mark when navigating via the top-left '한글' chip, so we know user came from a sound page
+    // Mark when navigating via the top-left 'Home' chip, so we know user came from a sound page
     if (navChip) {
         navChip.addEventListener('click', function () {
             // If current page is a sound page, set a flag before navigation
@@ -384,14 +447,8 @@
         const calModal = document.getElementById('calibrationModal');
         const calPrompt = document.getElementById('calibrationPrompt');
         const calTitle = calModal ? calModal.querySelector('.modal-title') : null;
+        const calClose = document.getElementById('closeCalibration'); // Get the 'x' button here
         if (!calBtn) return;
-
-        // Make overlay non-closable
-        if (calOverlay) {
-            calOverlay.addEventListener('click', function(e) {
-                e.stopPropagation();
-            });
-        }
 
         // 5 calibration sounds with 3 samples each
         // Covers full vowel space: low-central, high-front, high-back, mid-back, mid-front
@@ -406,6 +463,47 @@
 
         let currentSoundIndex = 0;
         let currentSampleNum = 1;
+
+        let mediaRecorder;
+        let chunks = [];
+        let currentStream = null;
+
+        /**
+         * Closes the calibration modal and performs necessary cleanup.
+         * Only allows closing if it's a recalibration session (not initial signup).
+         */
+        function closeCalibrationModal() {
+            // Only allow closing if it's a recalibration (not initial signup)
+            const isRecalibration = calOverlay && calOverlay.dataset.isRecalibration === 'true';
+
+            if (isRecalibration) {
+                if (calOverlay) {
+                    calOverlay.hidden = true;
+                    calOverlay.classList.remove('closable');
+                    delete calOverlay.dataset.isRecalibration;
+                }
+                if (calModal) calModal.hidden = true;
+                document.body.style.overflow = '';
+
+                // Stop any active stream and reset button state
+                calBtn.disabled = false;
+                calBtn.classList.remove('recording');
+                calBtn.setAttribute('aria-pressed', 'false');
+                if (currentStream) {
+                    currentStream.getTracks().forEach(t => t.stop());
+                    currentStream = null;
+                }
+
+                if (window.Toast) {
+                    window.Toast.info('Calibration cancelled', 2000);
+                }
+            } else {
+                // Initial signup - show warning that calibration is required
+                if (window.Toast) {
+                    window.Toast.warning('Please complete calibration to continue', 3000);
+                }
+            }
+        }
 
         function updatePrompt() {
             const sound = calibrationSounds[currentSoundIndex];
@@ -426,10 +524,6 @@
             currentSampleNum = 1;
             updatePrompt();
         };
-
-        let mediaRecorder;
-        let chunks = [];
-        let currentStream = null;
 
         async function uploadCalibrationRecording(blob, soundCode, sampleNum) {
             try {
@@ -548,9 +642,25 @@
 
         calBtn.addEventListener('click', startCalibrationRecording);
 
+        // --- FIXED: Add event listener for the 'x' button to close the modal and stop the stream ---
+        if (calClose) {
+            calClose.addEventListener('click', closeCalibrationModal);
+        }
+
+        // --- FIXED: Add event listener for the overlay to close the modal during recalibration ---
+        if (calOverlay) {
+            calOverlay.addEventListener('click', function(e) {
+                // Only act if the click was directly on the overlay backdrop
+                if (e.target === calOverlay) {
+                    closeCalibrationModal();
+                }
+                // Don't propagate to prevent closing during initial signup
+                e.stopPropagation();
+            });
+        }
+        // ------------------------------------------------------------------------------------------
+
         // Initialize prompt
         updatePrompt();
     })();
 })();
-
-

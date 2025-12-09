@@ -172,6 +172,65 @@ body {
 }
 
 /* ============================================================================
+   Recalibrate Button (Top Navigation)
+   ============================================================================ */
+
+.recalibrate-btn {
+    background: rgba(245, 158, 11, 0.2);
+    backdrop-filter: blur(10px);
+    color: #ffffff;
+    border: 2px solid rgba(245, 158, 11, 0.4);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-full);
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all var(--duration-med) var(--easing-standard);
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+    white-space: nowrap;
+}
+
+.recalibrate-btn[hidden] {
+    display: none;
+}
+
+.recalibrate-btn:hover {
+    background: rgba(245, 158, 11, 0.3);
+    border-color: rgba(245, 158, 11, 0.6);
+    transform: translateY(-2px);
+}
+
+.recalibrate-btn:focus-visible {
+    outline: 3px solid rgba(245, 158, 11, 0.8);
+    outline-offset: 2px;
+}
+
+.recalibrate-btn .btn-icon {
+    font-size: 16px;
+    line-height: 1;
+}
+
+.recalibrate-btn .btn-text {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+/* ============================================================================
+   Calibration Modal - Now Closable
+   ============================================================================ */
+
+#calibrationModal .modal-close {
+    display: flex; /* Override the hidden display from original styles */
+}
+
+/* Make overlay clickable to close when recalibrating (optional) */
+#calibrationOverlay.closable {
+    cursor: pointer;
+}
+
+/* ============================================================================
    Content Area
    ============================================================================ */
 
@@ -317,11 +376,6 @@ body {
 .modal-btn.secondary:hover {
     background: var(--color-bg);
     box-shadow: var(--shadow-sm);
-}
-
-/* Calibration modal - no close button */
-#calibrationModal .modal-close {
-    display: none;
 }
 
 #calibrationOverlay {
@@ -1009,5 +1063,31 @@ body {
     .card,
     .modal {
         border-width: 3px;
+    }
+}
+
+
+/* Tablet and smaller */
+@media (max-width: 768px) {
+    .recalibrate-btn .btn-text {
+        display: none;
+    }
+    
+    .recalibrate-btn {
+        padding: var(--space-sm);
+        width: 36px;
+        height: 36px;
+        justify-content: center;
+    }
+    
+    .recalibrate-btn .btn-icon {
+        font-size: 18px;
+    }
+}
+
+/* Mobile */
+@media (max-width: 480px) {
+    .right-side {
+        gap: var(--space-sm);
     }
 }
