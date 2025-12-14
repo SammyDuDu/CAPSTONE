@@ -24,9 +24,9 @@ class DualPlotRenderer {
         this.formantCtx = this.formantCanvas.getContext('2d');
         this.articulatoryCtx = this.articulatoryCanvas.getContext('2d');
 
-        // Canvas dimensions
-        this.width = 420;
-        this.height = 380;
+        // Canvas dimensions (larger for better visibility)
+        this.width = 500;
+        this.height = 450;
 
         // Initialize canvases
         this.initializeCanvases();
@@ -35,9 +35,9 @@ class DualPlotRenderer {
         this.f1Range = [900, 200];  // High to low (inverted Y axis)
         this.f2Range = [3000, 500]; // High to low (inverted X axis)
 
-        // Articulatory space ranges
+        // Articulatory space ranges (matches backend VOWEL_ARTICULATORY_MAP)
         this.articulatoryRange = {
-            x: [0, 1],    // Backness: 0=back, 1=front
+            x: [0, 1],    // Backness: 0=front, 1=back (ㅣ=0.15, ㅜ=0.90)
             y: [0, 1]     // Height: 0=low, 1=high
         };
 
@@ -289,18 +289,17 @@ class DualPlotRenderer {
                 y: Math.max(0, Math.min(1, y))
             };
         }
-        // Improved fallback using standard formant ranges
-        // F2: 500-3000Hz maps to x: 0 (back) to 1 (front)
-        // F1: 200-900Hz maps to y: 1 (high, low F1) to 0 (low, high F1)
+        // Fallback mapping (matches backend VOWEL_ARTICULATORY_MAP)
+        // x: 0=front, 1=back (higher F2 = front vowel = smaller x)
+        // y: 0=low, 1=high (lower F1 = high vowel = higher y)
         //
-        // Coordinate alignment with Formant Chart:
-        // - Higher F2 (front vowels like ㅣ) → right side of chart, higher x in articulatory
-        // - Lower F1 (high vowels like ㅣ) → top of chart, higher y in articulatory
+        // Examples: ㅣ(i) has high F2 (~2800Hz) → x ≈ 0.15 (front/left)
+        //           ㅜ(u) has low F2 (~800Hz) → x ≈ 0.90 (back/right)
         const [f1Min, f1Max] = [this.f1Range[1], this.f1Range[0]]; // 200, 900
         const [f2Min, f2Max] = [this.f2Range[1], this.f2Range[0]]; // 500, 3000
 
-        // Normalize to 0-1 range with proper inversion
-        const xNorm = Math.max(0, Math.min(1, (f2 - f2Min) / (f2Max - f2Min)));
+        // FIXED: Invert x so high F2 (front vowel) → small x (left side)
+        const xNorm = Math.max(0, Math.min(1, 1 - (f2 - f2Min) / (f2Max - f2Min)));
         const yNorm = Math.max(0, Math.min(1, 1 - (f1 - f1Min) / (f1Max - f1Min)));
 
         return { x: xNorm, y: yNorm };
@@ -389,12 +388,12 @@ class DualPlotRenderer {
                 const prevY = this.f1ToCanvasY(this.previousPoint.f1);
 
                 // Draw the trail line (fading as animation progresses)
-                const trailOpacity = Math.max(0, 0.6 * (1 - progress));
+                const trailOpacity = Math.max(0, 0.4 * (1 - progress));  // Softer
                 if (trailOpacity > 0.05) {
                     ctx.beginPath();
                     ctx.moveTo(prevX, prevY);
                     ctx.lineTo(currX, currY);
-                    ctx.strokeStyle = `rgba(239, 68, 68, ${trailOpacity})`;
+                    ctx.strokeStyle = `rgba(251, 146, 60, ${trailOpacity})`;  // Softer orange
                     ctx.lineWidth = 3;
                     ctx.setLineDash([6, 3]);
                     ctx.stroke();
@@ -402,7 +401,7 @@ class DualPlotRenderer {
                 }
 
                 // Draw fading previous point
-                const fadeOpacity = Math.max(0, 0.5 * (1 - progress));
+                const fadeOpacity = Math.max(0, 0.4 * (1 - progress));  // Softer
                 if (fadeOpacity > 0.05) {
                     this.drawPoint(ctx, prevX, prevY, 5, '#94a3b8', fadeOpacity, 'Prev', 9);
                 }
@@ -418,10 +417,10 @@ class DualPlotRenderer {
                     if (t > 0 && t < 1) {
                         const ghostX = prevX + (currX - prevX) * t;
                         const ghostY = prevY + (currY - prevY) * t;
-                        const ghostOpacity = 0.3 * (1 - i / numGhosts) * (1 - progress);
+                        const ghostOpacity = 0.25 * (1 - i / numGhosts) * (1 - progress);  // Softer
                         ctx.beginPath();
                         ctx.arc(ghostX, ghostY, 4, 0, Math.PI * 2);
-                        ctx.fillStyle = `rgba(239, 68, 68, ${ghostOpacity})`;
+                        ctx.fillStyle = `rgba(251, 146, 60, ${ghostOpacity})`;  // Softer orange
                         ctx.fill();
                     }
                 }
@@ -430,9 +429,9 @@ class DualPlotRenderer {
                 cy = currY;
             }
 
-            const opacity = 0.3 + 0.7 * progress;
+            const opacity = 0.25 + 0.55 * progress;  // Softer opacity
             const radius = 6 + 4 * progress;
-            this.drawPoint(ctx, cx, cy, radius, '#ef4444', opacity, 'Now', 11);
+            this.drawPoint(ctx, cx, cy, radius, '#fb923c', opacity, 'Now', 11);  // Softer orange
 
             // Draw line to target (distance indicator)
             if (this.targetPoint && progress > 0.3) {
@@ -539,13 +538,13 @@ class DualPlotRenderer {
                 const prevX = this.artToCanvasX(this.previousPoint.x);
                 const prevY = this.artToCanvasY(this.previousPoint.y);
 
-                // Draw the trail line (fading as animation progresses)
-                const trailOpacity = Math.max(0, 0.6 * (1 - progress));
+                // Draw the trail line (fading as animation progresses) - softer
+                const trailOpacity = Math.max(0, 0.4 * (1 - progress));
                 if (trailOpacity > 0.05) {
                     ctx.beginPath();
                     ctx.moveTo(prevX, prevY);
                     ctx.lineTo(currX, currY);
-                    ctx.strokeStyle = `rgba(239, 68, 68, ${trailOpacity})`;
+                    ctx.strokeStyle = `rgba(251, 146, 60, ${trailOpacity})`;  // Softer orange
                     ctx.lineWidth = 3;
                     ctx.setLineDash([6, 3]);
                     ctx.stroke();
@@ -553,7 +552,7 @@ class DualPlotRenderer {
                 }
 
                 // Draw fading previous point
-                const fadeOpacity = Math.max(0, 0.5 * (1 - progress));
+                const fadeOpacity = Math.max(0, 0.4 * (1 - progress));
                 if (fadeOpacity > 0.05) {
                     this.drawPoint(ctx, prevX, prevY, 5, '#94a3b8', fadeOpacity, 'Prev', 9);
                 }
@@ -562,17 +561,17 @@ class DualPlotRenderer {
                 cx = prevX + (currX - prevX) * progress;
                 cy = prevY + (currY - prevY) * progress;
 
-                // Draw intermediate ghost points for "주르륵" effect
+                // Draw intermediate ghost points for "주르륵" effect - softer
                 const numGhosts = 5;
                 for (let i = 1; i < numGhosts; i++) {
                     const t = (progress - i * 0.08);
                     if (t > 0 && t < 1) {
                         const ghostX = prevX + (currX - prevX) * t;
                         const ghostY = prevY + (currY - prevY) * t;
-                        const ghostOpacity = 0.3 * (1 - i / numGhosts) * (1 - progress);
+                        const ghostOpacity = 0.25 * (1 - i / numGhosts) * (1 - progress);
                         ctx.beginPath();
                         ctx.arc(ghostX, ghostY, 4, 0, Math.PI * 2);
-                        ctx.fillStyle = `rgba(239, 68, 68, ${ghostOpacity})`;
+                        ctx.fillStyle = `rgba(251, 146, 60, ${ghostOpacity})`;  // Softer orange
                         ctx.fill();
                     }
                 }
@@ -581,9 +580,9 @@ class DualPlotRenderer {
                 cy = currY;
             }
 
-            const opacity = 0.3 + 0.7 * progress;
+            const opacity = 0.25 + 0.55 * progress;  // Softer opacity
             const radius = 6 + 4 * progress;
-            this.drawPoint(ctx, cx, cy, radius, '#ef4444', opacity, 'Now', 11);
+            this.drawPoint(ctx, cx, cy, radius, '#fb923c', opacity, 'Now', 11);  // Softer orange
         }
 
         // Draw title and subtitle
@@ -621,53 +620,53 @@ class DualPlotRenderer {
         const endX = this.artToCanvasX(endArt.x);
         const endY = this.artToCanvasY(endArt.y);
 
-        // Draw start zone (green circle)
+        // Draw start zone (softer green circle - smaller)
         ctx.beginPath();
-        ctx.arc(startX, startY, 25, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
+        ctx.arc(startX, startY, 18, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(52, 211, 153, 0.08)';
         ctx.fill();
-        ctx.strokeStyle = 'rgba(16, 185, 129, 0.6)';
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(52, 211, 153, 0.4)';
+        ctx.lineWidth = 1.5;
         ctx.stroke();
 
-        // Start label
-        ctx.fillStyle = '#10b981';
-        ctx.font = 'bold 11px Inter, system-ui, sans-serif';
+        // Start label (softer)
+        ctx.fillStyle = 'rgba(52, 211, 153, 0.8)';
+        ctx.font = '10px Inter, system-ui, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(this.diphthongStartRef.label || 'Start', startX, startY - 30);
+        ctx.fillText(this.diphthongStartRef.label || 'Start', startX, startY - 24);
 
-        // Draw end zone (red circle)
+        // Draw end zone (softer orange circle - smaller)
         ctx.beginPath();
-        ctx.arc(endX, endY, 25, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
+        ctx.arc(endX, endY, 18, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(251, 146, 60, 0.08)';
         ctx.fill();
-        ctx.strokeStyle = 'rgba(239, 68, 68, 0.6)';
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(251, 146, 60, 0.4)';
+        ctx.lineWidth = 1.5;
         ctx.stroke();
 
-        // End label
-        ctx.fillStyle = '#ef4444';
-        ctx.font = 'bold 11px Inter, system-ui, sans-serif';
-        ctx.fillText(this.diphthongEndRef.label || 'End', endX, endY - 30);
+        // End label (softer)
+        ctx.fillStyle = 'rgba(251, 146, 60, 0.8)';
+        ctx.font = '10px Inter, system-ui, sans-serif';
+        ctx.fillText(this.diphthongEndRef.label || 'End', endX, endY - 24);
 
-        // Draw direction arrow (dashed line with arrow head)
+        // Draw direction arrow (dashed line with arrow head - softer)
         ctx.beginPath();
-        ctx.setLineDash([8, 4]);
-        ctx.strokeStyle = 'rgba(59, 130, 246, 0.5)';
-        ctx.lineWidth = 3;
+        ctx.setLineDash([6, 3]);
+        ctx.strokeStyle = 'rgba(96, 165, 250, 0.35)';
+        ctx.lineWidth = 2;
         ctx.moveTo(startX, startY);
         ctx.lineTo(endX, endY);
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Arrow head
-        this.drawArrow(ctx, startX, startY, endX, endY, 'rgba(59, 130, 246, 0.7)');
+        // Arrow head (softer)
+        this.drawArrow(ctx, startX, startY, endX, endY, 'rgba(96, 165, 250, 0.5)');
 
-        // Direction label in middle
+        // Direction label in middle (softer)
         const midX = (startX + endX) / 2;
-        const midY = (startY + endY) / 2 - 15;
-        ctx.fillStyle = '#3b82f6';
-        ctx.font = 'bold 10px Inter, system-ui, sans-serif';
+        const midY = (startY + endY) / 2 - 12;
+        ctx.fillStyle = 'rgba(96, 165, 250, 0.7)';
+        ctx.font = '9px Inter, system-ui, sans-serif';
         ctx.fillText('Expected Path', midX, midY);
     }
 
@@ -797,31 +796,34 @@ class DualPlotRenderer {
         ctx.font = 'bold 10px Inter, system-ui, sans-serif';
         ctx.textAlign = 'center';
 
-        ctx.fillText('FRONT', m.left + w * 0.85, m.top - 5);
-        ctx.fillText('BACK', m.left + w * 0.15, m.top - 5);
+        ctx.fillText('FRONT', m.left + w * 0.15, m.top - 5);
+        ctx.fillText('BACK', m.left + w * 0.85, m.top - 5);
         ctx.fillText('HIGH', m.left - 20, m.top + 15);
         ctx.fillText('LOW', m.left - 20, this.height - m.bottom - 10);
     }
 
     /**
      * Draw vowel quadrangle - lightweight overlay for use with background image
-     * Based on IPA vowel chart positioning within mouth cavity
+     * Uses artToCanvas functions for consistent positioning with data points
      */
     drawVowelQuadrangle(ctx) {
-        const m = this.margin;
-        const w = this.width - m.left - m.right;
-        const h = this.height - m.top - m.bottom;
+        // Use articulatory coordinates (x: 0=front, 1=back; y: 0=low, 1=high)
+        // and convert to canvas using our standard functions
 
-        // Vowel quadrangle vertices (matching IPA chart proportions)
-        // Positioned to align with mouth cross-section:
-        // - Front vowels near the front of mouth (right side of typical cross-section)
-        // - Back vowels near the back (left side)
-        // - High vowels near palate (top)
-        // - Low vowels near jaw (bottom)
-        const topLeft = [m.left + w * 0.20, m.top + h * 0.12];   // Front-high (i)
-        const topRight = [m.left + w * 0.80, m.top + h * 0.12];  // Back-high (u)
-        const bottomRight = [m.left + w * 0.65, m.top + h * 0.85]; // Back-low (ɑ)
-        const bottomLeft = [m.left + w * 0.35, m.top + h * 0.85];  // Front-low (a)
+        // Vowel quadrangle vertices (matching VOWEL_ARTICULATORY_MAP)
+        // Front-high (ㅣ): x=0.15, y=0.90
+        const frontHigh = [this.artToCanvasX(0.10), this.artToCanvasY(0.95)];
+        // Back-high (ㅜ): x=0.90, y=0.85
+        const backHigh = [this.artToCanvasX(0.95), this.artToCanvasY(0.90)];
+        // Back-low (near ㅓ area): x=0.75, y=0.35
+        const backLow = [this.artToCanvasX(0.85), this.artToCanvasY(0.15)];
+        // Front-low (ㅏ): x=0.50, y=0.20
+        const frontLow = [this.artToCanvasX(0.25), this.artToCanvasY(0.15)];
+
+        const topLeft = frontHigh;
+        const topRight = backHigh;
+        const bottomRight = backLow;
+        const bottomLeft = frontLow;
 
         // Draw quadrangle with semi-transparent fill
         ctx.beginPath();
@@ -832,51 +834,53 @@ class DualPlotRenderer {
         ctx.closePath();
 
         // Light fill
-        ctx.fillStyle = 'rgba(59, 130, 246, 0.08)';  // Light blue tint
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.06)';  // Softer blue tint
         ctx.fill();
 
         // Stroke
-        ctx.strokeStyle = 'rgba(59, 130, 246, 0.5)';
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(59, 130, 246, 0.4)';
+        ctx.lineWidth = 1.5;
         ctx.stroke();
 
         // Draw internal guide lines
-        ctx.strokeStyle = 'rgba(100, 116, 139, 0.3)';
+        ctx.strokeStyle = 'rgba(100, 116, 139, 0.2)';
         ctx.lineWidth = 1;
         ctx.setLineDash([4, 4]);
 
-        // Vertical center line
-        const centerX = m.left + w * 0.5;
+        // Vertical center line (x = 0.5)
+        const centerX = this.artToCanvasX(0.5);
         ctx.beginPath();
-        ctx.moveTo(centerX, m.top + h * 0.15);
-        ctx.lineTo(centerX, m.top + h * 0.82);
+        ctx.moveTo(centerX, this.artToCanvasY(0.90));
+        ctx.lineTo(centerX, this.artToCanvasY(0.20));
         ctx.stroke();
 
-        // Horizontal mid line
-        const midY = m.top + h * 0.48;
+        // Horizontal mid line (y = 0.5)
+        const midY = this.artToCanvasY(0.5);
         ctx.beginPath();
-        ctx.moveTo(m.left + w * 0.25, midY);
-        ctx.lineTo(m.left + w * 0.75, midY);
+        ctx.moveTo(this.artToCanvasX(0.15), midY);
+        ctx.lineTo(this.artToCanvasX(0.85), midY);
         ctx.stroke();
 
         ctx.setLineDash([]);
 
-        // Corner labels (subtle)
-        ctx.fillStyle = 'rgba(71, 85, 105, 0.7)';
-        ctx.font = 'bold 9px Inter, system-ui, sans-serif';
+        // Corner labels (subtle) - use artToCanvas for positioning
+        ctx.fillStyle = 'rgba(71, 85, 105, 0.6)';
+        ctx.font = '9px Inter, system-ui, sans-serif';
         ctx.textAlign = 'center';
 
-        ctx.fillText('전설(Front)', m.left + w * 0.25, m.top + 5);
-        ctx.fillText('후설(Back)', m.left + w * 0.75, m.top + 5);
+        // Front/Back labels at top
+        ctx.fillText('전설(Front)', this.artToCanvasX(0.15), this.margin.top - 5);
+        ctx.fillText('후설(Back)', this.artToCanvasX(0.85), this.margin.top - 5);
 
+        // High/Low labels on left side
         ctx.save();
-        ctx.translate(m.left - 5, m.top + h * 0.3);
+        ctx.translate(this.margin.left - 8, this.artToCanvasY(0.85));
         ctx.rotate(-Math.PI / 2);
         ctx.fillText('고(High)', 0, 0);
         ctx.restore();
 
         ctx.save();
-        ctx.translate(m.left - 5, m.top + h * 0.75);
+        ctx.translate(this.margin.left - 8, this.artToCanvasY(0.25));
         ctx.rotate(-Math.PI / 2);
         ctx.fillText('저(Low)', 0, 0);
         ctx.restore();
@@ -905,25 +909,25 @@ class DualPlotRenderer {
         // 2σ ellipse (outer, faded)
         ctx.beginPath();
         ctx.ellipse(cx, cy, wScale * 2, hScale * 2, 0, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(16, 185, 129, 0.08)';
+        ctx.fillStyle = 'rgba(52, 211, 153, 0.05)';  // Lighter green
         ctx.fill();
-        ctx.strokeStyle = 'rgba(16, 185, 129, 0.3)';
+        ctx.strokeStyle = 'rgba(52, 211, 153, 0.2)';
         ctx.lineWidth = 1;
         ctx.setLineDash([4, 4]);
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // 1.5σ ellipse (valid range, more visible)
+        // 1.5σ ellipse (valid range, softer colors)
         ctx.beginPath();
         ctx.ellipse(cx, cy, wScale * 1.5, hScale * 1.5, 0, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
+        ctx.fillStyle = 'rgba(52, 211, 153, 0.1)';  // Softer green fill
         ctx.fill();
-        ctx.strokeStyle = 'rgba(16, 185, 129, 0.6)';
+        ctx.strokeStyle = 'rgba(52, 211, 153, 0.4)';  // Softer green stroke
         ctx.lineWidth = 2;
         ctx.stroke();
 
-        // Center point
-        this.drawPoint(ctx, cx, cy, 6, '#10b981', 0.8, target.label || 'Target', 10);
+        // Center point (softer green)
+        this.drawPoint(ctx, cx, cy, 6, '#34d399', 0.6, target.label || 'Target', 10);
     }
 
     drawDiphthongRefEllipse(ctx, ref, color, chartType) {
@@ -933,62 +937,67 @@ class DualPlotRenderer {
             cx = this.f2ToCanvasX(ref.f2);
             cy = this.f1ToCanvasY(ref.f1);
             const scale = this.sdToCanvasScale(ref.f1_sd || 60, ref.f2_sd || 100);
-            wScale = scale.w;
-            hScale = scale.h;
+            wScale = scale.w * 0.7;  // Smaller ellipse
+            hScale = scale.h * 0.7;
         } else {
             const artCoords = this.formantsToArticulatory(ref.f1, ref.f2);
             cx = this.artToCanvasX(artCoords.x);
             cy = this.artToCanvasY(artCoords.y);
-            wScale = 25;
-            hScale = 25;
+            wScale = 18;  // Smaller
+            hScale = 18;
         }
 
-        // 1.5σ ellipse
+        // Parse color and make softer
+        const softerColor = color.replace('#10b981', 'rgba(52, 211, 153,')
+                                 .replace('#ef4444', 'rgba(251, 146, 60,')
+                                 .replace('rgb(', 'rgba(');
+
+        // 1.5σ ellipse (softer, smaller)
         ctx.beginPath();
-        ctx.ellipse(cx, cy, wScale * 1.5, hScale * 1.5, 0, 0, Math.PI * 2);
-        ctx.fillStyle = color.replace(')', ', 0.1)').replace('rgb', 'rgba');
+        ctx.ellipse(cx, cy, wScale * 1.2, hScale * 1.2, 0, 0, Math.PI * 2);
+        ctx.fillStyle = softerColor.includes('rgba') ? softerColor + ' 0.06)' : 'rgba(100, 116, 139, 0.06)';
         ctx.fill();
-        ctx.strokeStyle = color;
-        ctx.globalAlpha = 0.5;
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = softerColor.includes('rgba') ? softerColor + ' 0.35)' : color;
+        ctx.globalAlpha = 0.6;
+        ctx.lineWidth = 1.5;
         ctx.stroke();
         ctx.globalAlpha = 1;
 
-        // Label
-        ctx.fillStyle = color;
-        ctx.font = 'bold 10px Inter, system-ui, sans-serif';
+        // Label (softer)
+        ctx.fillStyle = softerColor.includes('rgba') ? softerColor + ' 0.7)' : color;
+        ctx.font = '9px Inter, system-ui, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(ref.label || '', cx, cy - wScale * 1.5 - 5);
+        ctx.fillText(ref.label || '', cx, cy - wScale * 1.2 - 4);
     }
 
     drawAchievementCircles(ctx, cx, cy) {
         const baseRadius = 30;
 
-        // Outer circle (3σ = 0%)
+        // Outer circle (3σ = 0%) - softer red
         ctx.beginPath();
         ctx.arc(cx, cy, baseRadius * 2, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(239, 68, 68, 0.2)';
+        ctx.strokeStyle = 'rgba(248, 113, 113, 0.15)';  // Softer red
         ctx.lineWidth = 1;
         ctx.stroke();
 
-        // Middle circle (2σ)
+        // Middle circle (2σ) - softer amber
         ctx.beginPath();
         ctx.arc(cx, cy, baseRadius * 1.33, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(245, 158, 11, 0.3)';
+        ctx.strokeStyle = 'rgba(251, 191, 36, 0.2)';  // Softer amber
         ctx.lineWidth = 1;
         ctx.stroke();
 
-        // Inner circle (1.5σ = 100%)
+        // Inner circle (1.5σ = 100%) - softer green
         ctx.beginPath();
         ctx.arc(cx, cy, baseRadius, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
+        ctx.fillStyle = 'rgba(52, 211, 153, 0.1)';  // Softer green
         ctx.fill();
-        ctx.strokeStyle = 'rgba(16, 185, 129, 0.6)';
+        ctx.strokeStyle = 'rgba(52, 211, 153, 0.4)';
         ctx.lineWidth = 2;
         ctx.stroke();
 
-        // Center point
-        this.drawPoint(ctx, cx, cy, 5, '#10b981', 0.8, 'Target', 10);
+        // Center point (softer green)
+        this.drawPoint(ctx, cx, cy, 5, '#34d399', 0.6, 'Target', 10);
     }
 
     drawAchievementBadge(ctx, score) {
@@ -1083,38 +1092,38 @@ class DualPlotRenderer {
             y: this.f1ToCanvasY(pt.f1)
         }));
 
-        // Draw smooth curve
-        this.drawSmoothCurve(ctx, canvasPoints, `rgba(59, 130, 246, ${opacity})`, 3);
+        // Draw smooth curve (softer blue)
+        this.drawSmoothCurve(ctx, canvasPoints, `rgba(96, 165, 250, ${opacity * 0.7})`, 3);
 
         // Draw arrow at end
         if (canvasPoints.length >= 2 && (!isAnimating || this.animationProgress > 0.8)) {
             const last = canvasPoints[canvasPoints.length - 1];
             const prev = canvasPoints[canvasPoints.length - 2];
-            this.drawArrow(ctx, prev.x, prev.y, last.x, last.y, `rgba(59, 130, 246, ${opacity})`);
+            this.drawArrow(ctx, prev.x, prev.y, last.x, last.y, `rgba(96, 165, 250, ${opacity * 0.7})`);
         }
 
-        // Start point (green)
+        // Start point (softer green)
         const start = canvasPoints[0];
-        this.drawPoint(ctx, start.x, start.y, 5, '#10b981', opacity, 'Start', 9);
+        this.drawPoint(ctx, start.x, start.y, 5, '#34d399', opacity * 0.7, 'Start', 9);
 
-        // End point (red) - only when animation near complete
+        // End point (softer orange) - only when animation near complete
         if (!isAnimating || this.animationProgress > 0.85) {
             const endOpacity = isFaded ? opacity : opacity * ((this.animationProgress - 0.85) / 0.15);
             const end = canvasPoints[canvasPoints.length - 1];
-            this.drawPoint(ctx, end.x, end.y, 5, '#ef4444', endOpacity, 'End', 9);
+            this.drawPoint(ctx, end.x, end.y, 5, '#fb923c', endOpacity * 0.7, 'End', 9);
         }
 
-        // Moving point during animation
+        // Moving point during animation (softer blue)
         if (isAnimating && visibleCount > 1) {
             const current = canvasPoints[canvasPoints.length - 1];
-            this.drawPoint(ctx, current.x, current.y, 7, '#3b82f6', 0.9);
+            this.drawPoint(ctx, current.x, current.y, 7, '#60a5fa', 0.7);
         }
     }
 
     drawTrajectoryOnArticulatory(ctx, points, isFaded) {
         if (!points || points.length < 2) return;
 
-        const opacity = isFaded ? 0.2 : 0.7;
+        const opacity = isFaded ? 0.15 : 0.6;  // Softer
         const isAnimating = !isFaded && this.animationProgress < 1;
         const visibleCount = isAnimating
             ? Math.max(2, Math.ceil(points.length * this.animationProgress))
@@ -1131,23 +1140,23 @@ class DualPlotRenderer {
             };
         });
 
-        // Draw smooth curve
-        this.drawSmoothCurve(ctx, canvasPoints, `rgba(59, 130, 246, ${opacity})`, 3);
+        // Draw smooth curve (softer blue)
+        this.drawSmoothCurve(ctx, canvasPoints, `rgba(96, 165, 250, ${opacity})`, 3);
 
-        // Start point
-        this.drawPoint(ctx, canvasPoints[0].x, canvasPoints[0].y, 5, '#10b981', opacity);
+        // Start point (softer green)
+        this.drawPoint(ctx, canvasPoints[0].x, canvasPoints[0].y, 5, '#34d399', opacity);
 
-        // End point
+        // End point (softer orange)
         if (!isAnimating || this.animationProgress > 0.85) {
             const endOpacity = isFaded ? opacity : opacity * ((this.animationProgress - 0.85) / 0.15);
             const last = canvasPoints[canvasPoints.length - 1];
-            this.drawPoint(ctx, last.x, last.y, 5, '#ef4444', endOpacity);
+            this.drawPoint(ctx, last.x, last.y, 5, '#fb923c', endOpacity);
         }
 
-        // Moving point
+        // Moving point (softer blue)
         if (isAnimating && canvasPoints.length > 1) {
             const current = canvasPoints[canvasPoints.length - 1];
-            this.drawPoint(ctx, current.x, current.y, 7, '#3b82f6', 0.9);
+            this.drawPoint(ctx, current.x, current.y, 7, '#60a5fa', 0.7);
         }
     }
 

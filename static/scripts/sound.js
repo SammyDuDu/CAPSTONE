@@ -2,10 +2,11 @@
 // Record audio and send to FastAPI analysis engine
 (function () {
     const RECORDING_DURATION_MS = 1000;  // 1 second for monophthongs
-    const DIPHTHONG_DURATION_MS = 2000;  // 2 seconds for diphthongs
+    const DIPHTHONG_DURATION_MS = 1500;  // 1.5 seconds for diphthongs
 
-    // Diphthong symbols that need longer recording
-    const DIPHTHONG_SYMBOLS = ['ㅘ', 'ㅙ', 'ㅚ', 'ㅝ', 'ㅞ', 'ㅟ', 'ㅢ', 'ㅑ', 'ㅕ', 'ㅛ', 'ㅠ', 'ㅒ', 'ㅖ'];
+    // True diphthongs that need trajectory analysis (w-glide vowels)
+    // Y-vowels (ㅑ,ㅕ,ㅛ,ㅠ,ㅒ,ㅖ) are treated as monophthongs (short glide + vowel)
+    const DIPHTHONG_SYMBOLS = ['ㅘ', 'ㅙ', 'ㅚ', 'ㅝ', 'ㅞ', 'ㅟ', 'ㅢ'];
 
     function isDiphthong(symbol) {
         return DIPHTHONG_SYMBOLS.includes(symbol);
