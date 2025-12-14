@@ -1,7 +1,19 @@
-// 2초 음성 녹음 후 FastAPI 분석 엔진과 통신
-// Record 2 seconds of audio and send to FastAPI analysis engine
+// 음성 녹음 후 FastAPI 분석 엔진과 통신
+// Record audio and send to FastAPI analysis engine
 (function () {
-    const RECORDING_DURATION_MS = 2000;
+    const RECORDING_DURATION_MS = 1000;  // 1 second for monophthongs
+    const DIPHTHONG_DURATION_MS = 2000;  // 2 seconds for diphthongs
+
+    // Diphthong symbols that need longer recording
+    const DIPHTHONG_SYMBOLS = ['ㅘ', 'ㅙ', 'ㅚ', 'ㅝ', 'ㅞ', 'ㅟ', 'ㅢ', 'ㅑ', 'ㅕ', 'ㅛ', 'ㅠ', 'ㅒ', 'ㅖ'];
+
+    function isDiphthong(symbol) {
+        return DIPHTHONG_SYMBOLS.includes(symbol);
+    }
+
+    function getRecordingDuration(symbol) {
+        return isDiphthong(symbol) ? DIPHTHONG_DURATION_MS : RECORDING_DURATION_MS;
+    }
     const btn = document.getElementById('recordBtn');
     if (!btn) return;
 
@@ -213,6 +225,8 @@
         if (isDiphthong && details.trajectory && details.scores) {
             const trajectory = details.trajectory || {};
             const scores = details.scores || {};
+            console.log('[sound.js] Diphthong trajectory data:', JSON.stringify(trajectory, null, 2));
+            console.log('[sound.js] Trajectory points count:', trajectory.points ? trajectory.points.length : 'NO POINTS');
 
             // F1 describes tongue height (high F1 = low tongue)
             const startHeightDesc = formants.start_f1 > 500 ? 'Low (저모음)' : formants.start_f1 > 350 ? 'Mid (중모음)' : 'High (고모음)';
@@ -434,7 +448,11 @@
     };
 
     // 초기 UI 상태 (Initial UI state)
-    setStatus('버튼을 눌러 2초간 녹음하세요. (Press the button to record for 2 seconds.)');
+    // Check if current sound is a diphthong for initial message
+    const initialSound = localStorage.getItem('selectedSound') ||
+        (soundSymbolEl && soundSymbolEl.textContent ? soundSymbolEl.textContent.trim() : '');
+    const initialDuration = getRecordingDuration(initialSound) / 1000;
+    setStatus(`버튼을 눌러 ${initialDuration}초간 녹음하세요. (Press the button to record for ${initialDuration} second${initialDuration > 1 ? 's' : ''}.)`);
     resetCards();
     setScore('');
     setFeedback('');
@@ -450,7 +468,14 @@
         setFeedback('');
         setScore('');
         resetCards();
-        setStatus('녹음 중... (2초) (Recording… 2 seconds)');
+
+        // Get current sound symbol and determine recording duration
+        const currentSound = localStorage.getItem('selectedSound') ||
+            (soundSymbolEl && soundSymbolEl.textContent ? soundSymbolEl.textContent.trim() : '');
+        const recordingDuration = getRecordingDuration(currentSound);
+        const durationSec = recordingDuration / 1000;
+
+        setStatus(`녹음 중... (${durationSec}초) (Recording… ${durationSec} second${durationSec > 1 ? 's' : ''})`);
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -533,12 +558,13 @@
                 }
             };
 
-            mediaRecorder.start();
+            // Start recording with 100ms timeslice to ensure data is captured progressively
+            mediaRecorder.start(100);
             setTimeout(() => {
                 if (mediaRecorder && mediaRecorder.state === 'recording') {
                     mediaRecorder.stop();
                 }
-            }, RECORDING_DURATION_MS);
+            }, recordingDuration);
         } catch (err) {
             console.error('Failed to start recording:', err);
             btn.disabled = false;

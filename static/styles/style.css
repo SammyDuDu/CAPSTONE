@@ -763,7 +763,7 @@ body {
 
 .analysis-plot-container {
     margin: var(--space-2xl) auto;
-    max-width: 900px;
+    max-width: 1200px;  /* Wider to fit two plots side-by-side */
     text-align: center;
 }
 
@@ -771,7 +771,7 @@ body {
     display: flex;
     gap: var(--space-md);
     justify-content: center;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;  /* Force side-by-side layout */
 }
 
 .plot-panel {
@@ -781,6 +781,8 @@ body {
     padding: var(--space-sm);
     box-shadow: var(--shadow-md);
     transition: all var(--duration-med) var(--easing-standard);
+    flex: 0 0 auto;  /* Don't shrink or grow */
+    min-width: 320px;
 }
 
 .plot-panel:hover {
@@ -815,8 +817,8 @@ body {
     margin-bottom: var(--space-md);
 }
 
-/* Responsive: Stack vertically on narrow screens */
-@media (max-width: 900px) {
+/* Responsive: Stack vertically only on very narrow screens */
+@media (max-width: 600px) {
     .dual-plot-wrapper {
         flex-direction: column;
         align-items: center;

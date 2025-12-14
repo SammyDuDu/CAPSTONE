@@ -70,6 +70,14 @@ class DualPlotRenderer {
         this.diphthongStartRef = null;
         this.diphthongEndRef = null;
 
+        // Mouth cross-section background image
+        this.mouthImage = new Image();
+        this.mouthImage.src = '/static/images/mouth-crosssection.png';
+        this.mouthImage.onload = () => {
+            console.log('[DualPlotRenderer] Mouth image loaded');
+            this.draw();
+        };
+
         console.log('[DualPlotRenderer] Initialized');
         this.draw();
     }
@@ -201,10 +209,16 @@ class DualPlotRenderer {
 
         // Handle trajectory
         if (data.trajectory && Array.isArray(data.trajectory)) {
+            console.log('[DualPlotRenderer] Adding trajectory with', data.trajectory.length, 'points');
+            console.log('[DualPlotRenderer] First point:', data.trajectory[0]);
+            console.log('[DualPlotRenderer] Last point:', data.trajectory[data.trajectory.length - 1]);
             this.trajectoryHistory.push({
                 points: data.trajectory,
                 timestamp: Date.now()
             });
+            console.log('[DualPlotRenderer] trajectoryHistory now has', this.trajectoryHistory.length, 'trajectories');
+        } else {
+            console.log('[DualPlotRenderer] No trajectory in data. data.trajectory:', data.trajectory);
         }
 
         // Cancel previous animation
@@ -275,11 +289,21 @@ class DualPlotRenderer {
                 y: Math.max(0, Math.min(1, y))
             };
         }
-        // Generic fallback
-        return {
-            x: (f2 - 500) / (3000 - 500),
-            y: 1 - ((f1 - 200) / (900 - 200))
-        };
+        // Improved fallback using standard formant ranges
+        // F2: 500-3000Hz maps to x: 0 (back) to 1 (front)
+        // F1: 200-900Hz maps to y: 1 (high, low F1) to 0 (low, high F1)
+        //
+        // Coordinate alignment with Formant Chart:
+        // - Higher F2 (front vowels like ㅣ) → right side of chart, higher x in articulatory
+        // - Lower F1 (high vowels like ㅣ) → top of chart, higher y in articulatory
+        const [f1Min, f1Max] = [this.f1Range[1], this.f1Range[0]]; // 200, 900
+        const [f2Min, f2Max] = [this.f2Range[1], this.f2Range[0]]; // 500, 3000
+
+        // Normalize to 0-1 range with proper inversion
+        const xNorm = Math.max(0, Math.min(1, (f2 - f2Min) / (f2Max - f2Min)));
+        const yNorm = Math.max(0, Math.min(1, 1 - (f1 - f1Min) / (f1Max - f1Min)));
+
+        return { x: xNorm, y: yNorm };
     }
 
     artToCanvasX(x) {
@@ -344,8 +368,10 @@ class DualPlotRenderer {
         }
 
         // Draw trajectories
+        console.log('[DualPlotRenderer] Drawing', this.trajectoryHistory.length, 'trajectories on formant chart');
         this.trajectoryHistory.forEach((traj, idx) => {
             const isFaded = idx < this.trajectoryHistory.length - 1;
+            console.log('[DualPlotRenderer] Drawing trajectory', idx, 'with', traj.points.length, 'points, isFaded:', isFaded);
             this.drawTrajectoryOnFormant(ctx, traj.points, isFaded);
         });
 
@@ -406,7 +432,7 @@ class DualPlotRenderer {
 
             const opacity = 0.3 + 0.7 * progress;
             const radius = 6 + 4 * progress;
-            this.drawPoint(ctx, cx, cy, radius, '#ef4444', opacity, 'You', 11);
+            this.drawPoint(ctx, cx, cy, radius, '#ef4444', opacity, 'Now', 11);
 
             // Draw line to target (distance indicator)
             if (this.targetPoint && progress > 0.3) {
@@ -443,12 +469,28 @@ class DualPlotRenderer {
         // Clear
         ctx.clearRect(0, 0, w, h);
 
-        // Background - slightly different color to distinguish from formant chart
-        ctx.fillStyle = '#fefce8';  // Warm yellow tint
+        // Background - mouth cross-section image or fallback color
+        ctx.fillStyle = '#fefce8';  // Warm yellow tint fallback
         ctx.fillRect(0, 0, w, h);
 
-        // Draw trapezoid (mouth cavity shape)
-        this.drawTrapezoid(ctx);
+        // Background image disabled due to watermark issue
+        // TODO: Enable when clean image is available
+        // if (this.mouthImage && this.mouthImage.complete && this.mouthImage.naturalWidth > 0) {
+        //     ctx.globalAlpha = 0.25;
+        //     const imgAspect = this.mouthImage.naturalWidth / this.mouthImage.naturalHeight;
+        //     const canvasAspect = w / h;
+        //     let drawW, drawH, drawX, drawY;
+        //     if (imgAspect > canvasAspect) {
+        //         drawH = h; drawW = h * imgAspect; drawX = (w - drawW) / 2; drawY = 0;
+        //     } else {
+        //         drawW = w; drawH = w / imgAspect; drawX = 0; drawY = (h - drawH) / 2;
+        //     }
+        //     ctx.drawImage(this.mouthImage, drawX, drawY, drawW, drawH);
+        //     ctx.globalAlpha = 1;
+        // }
+
+        // Draw vowel quadrangle overlay (instead of trapezoid)
+        this.drawVowelQuadrangle(ctx);
 
         // Draw reference vowels (always visible as landmarks)
         this.referenceVowels.forEach(pt => {
@@ -541,7 +583,7 @@ class DualPlotRenderer {
 
             const opacity = 0.3 + 0.7 * progress;
             const radius = 6 + 4 * progress;
-            this.drawPoint(ctx, cx, cy, radius, '#ef4444', opacity, 'You', 11);
+            this.drawPoint(ctx, cx, cy, radius, '#ef4444', opacity, 'Now', 11);
         }
 
         // Draw title and subtitle
@@ -759,6 +801,85 @@ class DualPlotRenderer {
         ctx.fillText('BACK', m.left + w * 0.15, m.top - 5);
         ctx.fillText('HIGH', m.left - 20, m.top + 15);
         ctx.fillText('LOW', m.left - 20, this.height - m.bottom - 10);
+    }
+
+    /**
+     * Draw vowel quadrangle - lightweight overlay for use with background image
+     * Based on IPA vowel chart positioning within mouth cavity
+     */
+    drawVowelQuadrangle(ctx) {
+        const m = this.margin;
+        const w = this.width - m.left - m.right;
+        const h = this.height - m.top - m.bottom;
+
+        // Vowel quadrangle vertices (matching IPA chart proportions)
+        // Positioned to align with mouth cross-section:
+        // - Front vowels near the front of mouth (right side of typical cross-section)
+        // - Back vowels near the back (left side)
+        // - High vowels near palate (top)
+        // - Low vowels near jaw (bottom)
+        const topLeft = [m.left + w * 0.20, m.top + h * 0.12];   // Front-high (i)
+        const topRight = [m.left + w * 0.80, m.top + h * 0.12];  // Back-high (u)
+        const bottomRight = [m.left + w * 0.65, m.top + h * 0.85]; // Back-low (ɑ)
+        const bottomLeft = [m.left + w * 0.35, m.top + h * 0.85];  // Front-low (a)
+
+        // Draw quadrangle with semi-transparent fill
+        ctx.beginPath();
+        ctx.moveTo(...topLeft);
+        ctx.lineTo(...topRight);
+        ctx.lineTo(...bottomRight);
+        ctx.lineTo(...bottomLeft);
+        ctx.closePath();
+
+        // Light fill
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.08)';  // Light blue tint
+        ctx.fill();
+
+        // Stroke
+        ctx.strokeStyle = 'rgba(59, 130, 246, 0.5)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Draw internal guide lines
+        ctx.strokeStyle = 'rgba(100, 116, 139, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+
+        // Vertical center line
+        const centerX = m.left + w * 0.5;
+        ctx.beginPath();
+        ctx.moveTo(centerX, m.top + h * 0.15);
+        ctx.lineTo(centerX, m.top + h * 0.82);
+        ctx.stroke();
+
+        // Horizontal mid line
+        const midY = m.top + h * 0.48;
+        ctx.beginPath();
+        ctx.moveTo(m.left + w * 0.25, midY);
+        ctx.lineTo(m.left + w * 0.75, midY);
+        ctx.stroke();
+
+        ctx.setLineDash([]);
+
+        // Corner labels (subtle)
+        ctx.fillStyle = 'rgba(71, 85, 105, 0.7)';
+        ctx.font = 'bold 9px Inter, system-ui, sans-serif';
+        ctx.textAlign = 'center';
+
+        ctx.fillText('전설(Front)', m.left + w * 0.25, m.top + 5);
+        ctx.fillText('후설(Back)', m.left + w * 0.75, m.top + 5);
+
+        ctx.save();
+        ctx.translate(m.left - 5, m.top + h * 0.3);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText('고(High)', 0, 0);
+        ctx.restore();
+
+        ctx.save();
+        ctx.translate(m.left - 5, m.top + h * 0.75);
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText('저(Low)', 0, 0);
+        ctx.restore();
     }
 
     // =========================================================================

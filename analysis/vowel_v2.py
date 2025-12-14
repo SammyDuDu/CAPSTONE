@@ -203,7 +203,10 @@ def analyze_vowel_and_pitch(wav_file_path: str):
         f2_mean = float(np.nanmedian(f2_vals))
         f3_mean = float(np.nanmedian(f3_vals))
 
+        print(f"[analyze_vowel_and_pitch] f0={f0_mean:.1f}, f1={f1_mean:.1f}, f2={f2_mean:.1f}, f3={f3_mean:.1f}")
+
         if any(np.isnan(v) for v in [f0_mean, f1_mean, f2_mean]):
+            print(f"[analyze_vowel_and_pitch] NaN detected - f0_nan={np.isnan(f0_mean)}, f1_nan={np.isnan(f1_mean)}, f2_nan={np.isnan(f2_mean)}")
             return None, None, None, None, "Could not get stable formants. Try a clearer vowel."
 
         quality_hint = " ".join(quality_msgs) if quality_msgs else None
@@ -319,7 +322,15 @@ def analyze_single_audio(
         wav_size = os.path.getsize(tmp_wav)
     except OSError:
         wav_size = -1
-    print(f"[analyze_single_audio] Converted sizes input={original_size}, wav={wav_size}")
+
+    # Check audio duration
+    try:
+        snd = parselmouth.Sound(tmp_wav)
+        audio_duration = snd.get_total_duration()
+    except Exception:
+        audio_duration = -1
+
+    print(f"[analyze_single_audio] Converted sizes input={original_size}, wav={wav_size}, duration={audio_duration:.2f}s")
 
     f1, f2, f3, f0, qhint = analyze_vowel_and_pitch(tmp_wav)
 
@@ -331,9 +342,9 @@ def analyze_single_audio(
 
     if f1 is None or f2 is None or f0 is None:
         msg = qhint or "Could not extract stable formants."
+        print(f"[analyze_single_audio] FAILED: {msg}")
         if return_reason:
             return None, msg
-        print(f"[analyze_single_audio] {msg}")
         return None
 
     gender_guess = "Male" if f0 < F0_GENDER_THRESHOLD else "Female"
@@ -430,11 +441,66 @@ def plot_single_vowel_space(f1, f2, vowel_key, gender_guess, out_path):
 ###############################################
 # 9. Time-series formant extraction for diphthongs
 ###############################################
+def smooth_trajectory(trajectory: list, window_size: int = 3) -> list:
+    """
+    Apply moving average smoothing to formant trajectory.
+
+    Args:
+        trajectory: List of {'time', 'f1', 'f2', 'f3'} dicts
+        window_size: Size of moving average window (default 3)
+
+    Returns:
+        Smoothed trajectory list
+    """
+    if len(trajectory) < window_size:
+        return trajectory
+
+    smoothed = []
+    half_win = window_size // 2
+
+    for i in range(len(trajectory)):
+        start_idx = max(0, i - half_win)
+        end_idx = min(len(trajectory), i + half_win + 1)
+        window = trajectory[start_idx:end_idx]
+
+        smoothed.append({
+            'time': trajectory[i]['time'],
+            'f1': np.mean([p['f1'] for p in window]),
+            'f2': np.mean([p['f2'] for p in window]),
+            'f3': np.mean([p['f3'] for p in window])
+        })
+
+    return smoothed
+
+
+def downsample_trajectory(trajectory: list, target_frames: int = 10) -> list:
+    """
+    Downsample trajectory to target number of frames.
+
+    Args:
+        trajectory: Full trajectory list
+        target_frames: Desired number of output frames
+
+    Returns:
+        Downsampled trajectory
+    """
+    n = len(trajectory)
+    if n <= target_frames:
+        return trajectory
+
+    # Select evenly spaced indices
+    indices = np.linspace(0, n - 1, target_frames, dtype=int)
+    return [trajectory[i] for i in indices]
+
+
 def extract_formant_trajectory(
     wav_file_path: str,
     window_length: float = 0.025,  # 25ms window
-    hop_length: float = 0.010,     # 10ms hop
-    min_frames: int = 5
+    hop_length: float = 0.050,     # 50ms hop (increased from 10ms to reduce noise)
+    min_frames: int = 3,           # Reduced from 5 to be more lenient
+    smooth: bool = True,
+    smooth_window: int = 3,
+    max_frames: int = 20           # Increased for 2-second recordings
 ):
     """
     Extract formant trajectory over time for diphthong analysis.
@@ -442,8 +508,11 @@ def extract_formant_trajectory(
     Args:
         wav_file_path: Path to WAV file
         window_length: Analysis window length in seconds (default 25ms)
-        hop_length: Hop between frames in seconds (default 10ms)
+        hop_length: Hop between frames in seconds (default 50ms for cleaner data)
         min_frames: Minimum number of frames required
+        smooth: Apply moving average smoothing (default True)
+        smooth_window: Smoothing window size (default 3)
+        max_frames: Maximum frames to output (default 15)
 
     Returns:
         dict with:
@@ -481,6 +550,13 @@ def extract_formant_trajectory(
                 'duration': duration
             }
 
+        # Extract formants once for the entire sound (more efficient)
+        formants = sound.to_formant_burg(
+            time_step=hop_length,
+            max_number_of_formants=5,
+            maximum_formant=5500
+        )
+
         # Generate time points
         num_frames = int((duration - window_length) / hop_length) + 1
 
@@ -497,31 +573,21 @@ def extract_formant_trajectory(
         for i in range(num_frames):
             t_center = window_length / 2 + i * hop_length
 
-            # Extract window
-            t_start = max(0, t_center - window_length / 2)
-            t_end = min(duration, t_center + window_length / 2)
-
             try:
-                # Extract formants at this time point
-                formants = sound.to_formant_burg(
-                    time_step=hop_length,
-                    max_number_of_formants=5,
-                    maximum_formant=5500
-                )
-
                 f1 = formants.get_value_at_time(1, t_center)
                 f2 = formants.get_value_at_time(2, t_center)
                 f3 = formants.get_value_at_time(3, t_center)
 
-                # Filter out NaN/undefined values
-                if f1 and not np.isnan(f1) and f2 and not np.isnan(f2):
+                # Filter out NaN/undefined values and unrealistic values
+                if (f1 and not np.isnan(f1) and f2 and not np.isnan(f2) and
+                    150 < f1 < 1200 and 400 < f2 < 3500):  # Realistic formant ranges
                     trajectory.append({
                         'time': t_center,
                         'f1': float(f1),
                         'f2': float(f2),
                         'f3': float(f3) if f3 and not np.isnan(f3) else 2500.0
                     })
-            except Exception as e:
+            except Exception:
                 # Skip problematic frames
                 continue
 
@@ -532,6 +598,14 @@ def extract_formant_trajectory(
                 'trajectory': [],
                 'duration': duration
             }
+
+        # Apply smoothing to reduce noise
+        if smooth and len(trajectory) >= smooth_window:
+            trajectory = smooth_trajectory(trajectory, smooth_window)
+
+        # Downsample if too many frames
+        if len(trajectory) > max_frames:
+            trajectory = downsample_trajectory(trajectory, max_frames)
 
         return {
             'success': True,
@@ -550,13 +624,62 @@ def extract_formant_trajectory(
         }
 
 
+def compute_sigma_score(measured_f1, measured_f2, ref_f1, ref_f2, ref_f1_sd, ref_f2_sd):
+    """
+    Compute sigma-based score for a single point.
+
+    Uses z-score (standard deviations from target) to calculate score:
+    - Within 1.5σ: 100 points (excellent)
+    - 1.5σ to 3σ: Linear decrease from 100 to 0
+    - Beyond 3σ: 0 points
+
+    Args:
+        measured_f1, measured_f2: User's formant values
+        ref_f1, ref_f2: Reference target formant values
+        ref_f1_sd, ref_f2_sd: Reference standard deviations
+
+    Returns:
+        Score (0-100) and z-scores tuple
+    """
+    # Calculate z-scores for each formant
+    z1 = abs(measured_f1 - ref_f1) / max(ref_f1_sd, 1)
+    z2 = abs(measured_f2 - ref_f2) / max(ref_f2_sd, 1)
+
+    # Combined z-score (average of F1 and F2 z-scores)
+    z_avg = (z1 + z2) / 2
+
+    # Score mapping:
+    # z <= 1.5σ: 100 points
+    # 1.5σ < z < 3σ: linear decrease
+    # z >= 3σ: 0 points
+    if z_avg <= 1.5:
+        score = 100
+    elif z_avg >= 3.0:
+        score = 0
+    else:
+        # Linear interpolation between 1.5σ (100) and 3σ (0)
+        score = 100 * (3.0 - z_avg) / 1.5
+
+    return score, z1, z2, z_avg
+
+
 def score_diphthong_trajectory(
     trajectory: list,
     vowel_key: str,
     ref_table: dict
 ):
     """
-    Score a diphthong trajectory based on start/end positions and direction.
+    Score a diphthong trajectory using sigma-based scoring.
+
+    Evaluates:
+    1. Start position (first 30%): How close to starting vowel target
+    2. End position (last 30%): How close to ending vowel target
+    3. Direction: Cosine similarity of movement vector
+
+    Sigma scoring rules:
+    - Within 1.5σ: 100% score for that component
+    - 1.5σ to 3σ: Linear decrease
+    - Beyond 3σ: 0%
 
     Args:
         trajectory: List of {'time', 'f1', 'f2', 'f3'} from extract_formant_trajectory()
@@ -566,16 +689,16 @@ def score_diphthong_trajectory(
     Returns:
         dict with:
             'score': Overall score (0-100)
-            'start_score': Starting position score
-            'end_score': Ending position score
+            'start_score': Starting position score (sigma-based)
+            'end_score': Ending position score (sigma-based)
             'direction_score': Movement direction score
             'feedback': List of feedback strings
-            'details': Additional metrics
+            'details': Additional metrics including sigma values
 
     Example:
         >>> result = extract_formant_trajectory('wa.wav')
         >>> score_result = score_diphthong_trajectory(result['trajectory'], 'wa (와)', ref_table)
-        >>> print(f"Score: {score_result['score']}")
+        >>> print(f"Score: {score_result['score']}, Start σ: {score_result['details']['start_sigma']}")
     """
     from config import DIPHTHONG_TRAJECTORIES, VOWEL_ARTICULATORY_MAP
 
@@ -627,19 +750,27 @@ def score_diphthong_trajectory(
     end_f1 = np.mean([f['f1'] for f in end_portion])
     end_f2 = np.mean([f['f2'] for f in end_portion])
 
-    # Score start position
+    # Get reference values
     start_ref = ref_table[start_vowel_key]
-    start_z1 = abs(start_f1 - start_ref['f1']) / start_ref['f1_sd']
-    start_z2 = abs(start_f2 - start_ref['f2']) / start_ref['f2_sd']
-    start_score = max(0, 100 - 10 * (start_z1 + start_z2))
-
-    # Score end position
     end_ref = ref_table[end_vowel_key]
-    end_z1 = abs(end_f1 - end_ref['f1']) / end_ref['f1_sd']
-    end_z2 = abs(end_f2 - end_ref['f2']) / end_ref['f2_sd']
-    end_score = max(0, 100 - 10 * (end_z1 + end_z2))
 
-    # Score direction (cosine similarity)
+    # === SIGMA-BASED SCORING ===
+
+    # Score start position using sigma scoring
+    start_score, start_z1, start_z2, start_sigma = compute_sigma_score(
+        start_f1, start_f2,
+        start_ref['f1'], start_ref['f2'],
+        start_ref['f1_sd'], start_ref['f2_sd']
+    )
+
+    # Score end position using sigma scoring
+    end_score, end_z1, end_z2, end_sigma = compute_sigma_score(
+        end_f1, end_f2,
+        end_ref['f1'], end_ref['f2'],
+        end_ref['f1_sd'], end_ref['f2_sd']
+    )
+
+    # Score direction (cosine similarity of movement vectors)
     user_vector = np.array([end_f2 - start_f2, end_f1 - start_f1])
     target_vector = np.array([
         end_ref['f2'] - start_ref['f2'],
@@ -657,21 +788,45 @@ def score_diphthong_trajectory(
         direction_score = 0
 
     # Overall score (weighted average)
+    # Start: 35%, End: 35%, Direction: 30%
     overall_score = (start_score * 0.35 + end_score * 0.35 + direction_score * 0.30)
 
-    # Generate feedback
+    # Generate feedback with sigma information
     feedback = []
-    if start_score < 70:
-        feedback.append(f"Starting position deviates from '{start_vowel_key}'")
-    if end_score < 70:
-        feedback.append(f"Ending position deviates from '{end_vowel_key}'")
-    if direction_score < 60:
-        feedback.append(f"Movement direction differs from expected '{diphthong_def['direction']}'")
 
+    # Start position feedback
+    if start_sigma <= 1.5:
+        feedback.append(f"시작 위치 우수 ({start_sigma:.1f}σ) - Start position excellent")
+    elif start_sigma <= 2.5:
+        feedback.append(f"시작 위치 양호 ({start_sigma:.1f}σ) - Start position good")
+    else:
+        if start_z1 > start_z2:
+            feedback.append(f"시작 시 혀 높이 조절 필요 ({start_sigma:.1f}σ) - Adjust tongue height at start")
+        else:
+            feedback.append(f"시작 시 혀 위치 조절 필요 ({start_sigma:.1f}σ) - Adjust tongue position at start")
+
+    # End position feedback
+    if end_sigma <= 1.5:
+        feedback.append(f"끝 위치 우수 ({end_sigma:.1f}σ) - End position excellent")
+    elif end_sigma <= 2.5:
+        feedback.append(f"끝 위치 양호 ({end_sigma:.1f}σ) - End position good")
+    else:
+        if end_z1 > end_z2:
+            feedback.append(f"끝 위치에서 혀 높이 조절 필요 ({end_sigma:.1f}σ) - Adjust tongue height at end")
+        else:
+            feedback.append(f"끝 위치에서 혀 위치 조절 필요 ({end_sigma:.1f}σ) - Adjust tongue position at end")
+
+    # Direction feedback
+    if direction_score < 60:
+        feedback.append(f"움직임 방향이 '{diphthong_def['direction']}'와 다름 - Movement direction differs")
+
+    # Overall assessment
     if overall_score >= 85:
-        feedback.insert(0, "Excellent diphthong trajectory!")
+        feedback.insert(0, "이중모음 발음 우수! 👏 - Excellent diphthong pronunciation!")
     elif overall_score >= 70:
-        feedback.insert(0, "Good trajectory, minor adjustments needed")
+        feedback.insert(0, "좋은 발음, 약간의 조정 필요 - Good pronunciation, minor adjustments needed")
+    elif overall_score >= 50:
+        feedback.insert(0, "연습이 더 필요합니다 - More practice needed")
 
     return {
         'score': round(overall_score, 1),
@@ -685,6 +840,11 @@ def score_diphthong_trajectory(
             'start_ref': start_vowel_key,
             'end_ref': end_vowel_key,
             'is_diphthong': True,
-            'num_frames': n
+            'num_frames': n,
+            # Sigma values for detailed analysis
+            'start_sigma': round(start_sigma, 2),
+            'end_sigma': round(end_sigma, 2),
+            'start_z_scores': {'f1': round(start_z1, 2), 'f2': round(start_z2, 2)},
+            'end_z_scores': {'f1': round(end_z1, 2), 'f2': round(end_z2, 2)},
         }
     }
