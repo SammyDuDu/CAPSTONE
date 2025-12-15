@@ -33,8 +33,11 @@ class DualPlotRenderer {
 
         // Formant space ranges (Hz) - inverted for chart display
         // Extended range to accommodate all Korean vowels including ㅏ (F1 ~1000Hz)
-        this.f1Range = [1000, 200];  // High to low (inverted Y axis)
-        this.f2Range = [3000, 500];  // High to low (inverted X axis)
+        // Formant ranges - expanded to accommodate more vowel variations
+        // F1: 200-1100 Hz covers all Korean vowels including outliers
+        // F2: 500-3200 Hz covers front vowels like ㅣ
+        this.f1Range = [1100, 200];  // High to low (inverted Y axis for phonetic convention)
+        this.f2Range = [3200, 500];  // High to low (inverted X axis for phonetic convention)
 
         // Articulatory space ranges (matches backend VOWEL_ARTICULATORY_MAP)
         this.articulatoryRange = {
@@ -331,13 +334,17 @@ class DualPlotRenderer {
 
     f1ToCanvasY(f1) {
         const chartHeight = this.height - this.margin.top - this.margin.bottom;
-        const normalized = (f1 - this.f1Range[1]) / (this.f1Range[0] - this.f1Range[1]);
+        // Clamp F1 to range to prevent drawing outside chart
+        const clampedF1 = Math.max(this.f1Range[1], Math.min(this.f1Range[0], f1));
+        const normalized = (clampedF1 - this.f1Range[1]) / (this.f1Range[0] - this.f1Range[1]);
         return this.margin.top + chartHeight * normalized;
     }
 
     f2ToCanvasX(f2) {
         const chartWidth = this.width - this.margin.left - this.margin.right;
-        const normalized = (f2 - this.f2Range[1]) / (this.f2Range[0] - this.f2Range[1]);
+        // Clamp F2 to range to prevent drawing outside chart
+        const clampedF2 = Math.max(this.f2Range[1], Math.min(this.f2Range[0], f2));
+        const normalized = (clampedF2 - this.f2Range[1]) / (this.f2Range[0] - this.f2Range[1]);
         return this.width - this.margin.right - chartWidth * normalized;
     }
 
@@ -727,12 +734,12 @@ class DualPlotRenderer {
         ctx.fillStyle = '#1e293b';
         ctx.font = 'bold 13px Inter, system-ui, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('Tongue Position (혀 위치)', w / 2, 18);
+        ctx.fillText('Tongue Position', w / 2, 18);
 
         // Subtitle explaining what this chart shows
         ctx.fillStyle = '#64748b';
         ctx.font = '10px Inter, system-ui, sans-serif';
-        ctx.fillText('Articulatory Space (입 안 위치)', w / 2, 32);
+        ctx.fillText('Articulatory Space', w / 2, 32);
 
         // Draw border to distinguish from formant chart
         ctx.strokeStyle = '#f59e0b';  // Amber/orange border
@@ -1007,20 +1014,20 @@ class DualPlotRenderer {
         ctx.textAlign = 'center';
 
         // Front/Back labels at top
-        ctx.fillText('전설(Front)', this.artToCanvasX(0.15), this.margin.top - 5);
-        ctx.fillText('후설(Back)', this.artToCanvasX(0.85), this.margin.top - 5);
+        ctx.fillText('Front(전설)', this.artToCanvasX(0.15), this.margin.top - 5);
+        ctx.fillText('Back(후설))', this.artToCanvasX(0.85), this.margin.top - 5);
 
         // High/Low labels on left side
         ctx.save();
         ctx.translate(this.margin.left - 8, this.artToCanvasY(0.85));
         ctx.rotate(-Math.PI / 2);
-        ctx.fillText('고(High)', 0, 0);
+        ctx.fillText('High(고)', 0, 0);
         ctx.restore();
 
         ctx.save();
         ctx.translate(this.margin.left - 8, this.artToCanvasY(0.25));
         ctx.rotate(-Math.PI / 2);
-        ctx.fillText('저(Low)', 0, 0);
+        ctx.fillText('Low(저)', 0, 0);
         ctx.restore();
     }
 
