@@ -791,42 +791,42 @@ def score_diphthong_trajectory(
     # Start: 35%, End: 35%, Direction: 30%
     overall_score = (start_score * 0.35 + end_score * 0.35 + direction_score * 0.30)
 
-    # Generate feedback with sigma information
+    # Generate feedback with sigma information (English - Korean order)
     feedback = []
 
     # Start position feedback
     if start_sigma <= 1.5:
-        feedback.append(f"시작 위치 우수 ({start_sigma:.1f}σ) - Start position excellent")
+        feedback.append(f"Start position excellent ({start_sigma:.1f}σ) - 시작 위치 우수")
     elif start_sigma <= 2.5:
-        feedback.append(f"시작 위치 양호 ({start_sigma:.1f}σ) - Start position good")
+        feedback.append(f"Start position good ({start_sigma:.1f}σ) - 시작 위치 양호")
     else:
         if start_z1 > start_z2:
-            feedback.append(f"시작 시 혀 높이 조절 필요 ({start_sigma:.1f}σ) - Adjust tongue height at start")
+            feedback.append(f"Adjust tongue height at start ({start_sigma:.1f}σ) - 시작 시 혀 높이 조절 필요")
         else:
-            feedback.append(f"시작 시 혀 위치 조절 필요 ({start_sigma:.1f}σ) - Adjust tongue position at start")
+            feedback.append(f"Adjust tongue position at start ({start_sigma:.1f}σ) - 시작 시 혀 위치 조절 필요")
 
     # End position feedback
     if end_sigma <= 1.5:
-        feedback.append(f"끝 위치 우수 ({end_sigma:.1f}σ) - End position excellent")
+        feedback.append(f"End position excellent ({end_sigma:.1f}σ) - 끝 위치 우수")
     elif end_sigma <= 2.5:
-        feedback.append(f"끝 위치 양호 ({end_sigma:.1f}σ) - End position good")
+        feedback.append(f"End position good ({end_sigma:.1f}σ) - 끝 위치 양호")
     else:
         if end_z1 > end_z2:
-            feedback.append(f"끝 위치에서 혀 높이 조절 필요 ({end_sigma:.1f}σ) - Adjust tongue height at end")
+            feedback.append(f"Adjust tongue height at end ({end_sigma:.1f}σ) - 끝 위치에서 혀 높이 조절 필요")
         else:
-            feedback.append(f"끝 위치에서 혀 위치 조절 필요 ({end_sigma:.1f}σ) - Adjust tongue position at end")
+            feedback.append(f"Adjust tongue position at end ({end_sigma:.1f}σ) - 끝 위치에서 혀 위치 조절 필요")
 
     # Direction feedback
     if direction_score < 60:
-        feedback.append(f"움직임 방향이 '{diphthong_def['direction']}'와 다름 - Movement direction differs")
+        feedback.append(f"Movement direction differs from '{diphthong_def['direction']}' - 움직임 방향이 다름")
 
     # Overall assessment
     if overall_score >= 85:
-        feedback.insert(0, "이중모음 발음 우수! 👏 - Excellent diphthong pronunciation!")
+        feedback.insert(0, "Excellent diphthong pronunciation! - 이중모음 발음 우수!")
     elif overall_score >= 70:
-        feedback.insert(0, "좋은 발음, 약간의 조정 필요 - Good pronunciation, minor adjustments needed")
+        feedback.insert(0, "Good pronunciation, minor adjustments needed - 좋은 발음, 약간의 조정 필요")
     elif overall_score >= 50:
-        feedback.insert(0, "연습이 더 필요합니다 - More practice needed")
+        feedback.insert(0, "More practice needed - 연습이 더 필요합니다")
 
     return {
         'score': round(overall_score, 1),

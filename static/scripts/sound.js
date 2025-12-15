@@ -182,7 +182,7 @@
 
     const describeMetric = (value, target, sd, { unit = '', decimals = 0 } = {}) => {
         const measured = formatNumber(value, decimals);
-        if (measured === null) return 'Measurement unavailable (측정 불가)';
+        if (measured === null) return 'Measurement unavailable';
 
         const unitStr = unit ? ` ${unit}` : '';
         let text = `${measured}${unitStr}`;
@@ -204,14 +204,14 @@
         if (Object.is(diffVal, -0)) diffVal = 0;
         const diffStr = diffVal === 0 ? '0' : `${diffVal > 0 ? '+' : ''}${diffVal}`;
 
-        text += ` (Target ${targetVal}${unitStr} (목표 ${targetVal}${unitStr})`;
+        text += ` (Target ${targetVal}${unitStr}`;
         if (typeof sd === 'number' && !Number.isNaN(sd)) {
             const sdVal = formatNumber(sd, decimals);
             if (sdVal !== null) {
                 text += ` ±${sdVal}${unitStr}`;
             }
         }
-        text += `, Difference ${diffStr}${unitStr} (차이 ${diffStr}${unitStr}))`;
+        text += `, Diff ${diffStr}${unitStr})`;
         return text;
     };
 
@@ -230,30 +230,30 @@
             console.log('[sound.js] Trajectory points count:', trajectory.points ? trajectory.points.length : 'NO POINTS');
 
             // F1 describes tongue height (high F1 = low tongue)
-            const startHeightDesc = formants.start_f1 > 500 ? 'Low (저모음)' : formants.start_f1 > 350 ? 'Mid (중모음)' : 'High (고모음)';
-            const endHeightDesc = formants.end_f1 > 500 ? 'Low (저모음)' : formants.end_f1 > 350 ? 'Mid (중모음)' : 'High (고모음)';
-            setCard('tongue-height', 'Tongue Height (혀 높이)',
+            const startHeightDesc = formants.start_f1 > 500 ? 'Low' : formants.start_f1 > 350 ? 'Mid' : 'High';
+            const endHeightDesc = formants.end_f1 > 500 ? 'Low' : formants.end_f1 > 350 ? 'Mid' : 'High';
+            setCard('tongue-height', 'Tongue Height',
                 `Start: ${formatNumber(formants.start_f1, 0) || '?'} Hz (${startHeightDesc}) → End: ${formatNumber(formants.end_f1, 0) || '?'} Hz (${endHeightDesc})`);
 
             // F2 describes tongue position (high F2 = front)
-            const startPosDesc = formants.start_f2 > 1800 ? 'Front (전설)' : formants.start_f2 > 1200 ? 'Central (중설)' : 'Back (후설)';
-            const endPosDesc = formants.end_f2 > 1800 ? 'Front (전설)' : formants.end_f2 > 1200 ? 'Central (중설)' : 'Back (후설)';
-            setCard('tongue-backness', 'Tongue Position (혀 위치)',
+            const startPosDesc = formants.start_f2 > 1800 ? 'Front' : formants.start_f2 > 1200 ? 'Central' : 'Back';
+            const endPosDesc = formants.end_f2 > 1800 ? 'Front' : formants.end_f2 > 1200 ? 'Central' : 'Back';
+            setCard('tongue-backness', 'Tongue Position',
                 `Start: ${formatNumber(formants.start_f2, 0) || '?'} Hz (${startPosDesc}) → End: ${formatNumber(formants.end_f2, 0) || '?'} Hz (${endPosDesc})`);
 
             const dirScore = formatNumber(scores.direction, 1);
-            const dirQuality = dirScore >= 80 ? 'Excellent (우수)' : dirScore >= 60 ? 'Good (양호)' : 'Needs practice (연습 필요)';
-            setCard('lips-roundness', 'Direction Score (방향 점수)', `${dirScore || '?'} / 100 - ${dirQuality}`);
-            setCard('breathiness', 'Trajectory Info (궤적 정보)', `${trajectory.num_frames || '?'} frames, ${formatNumber(trajectory.duration, 2) || '?'}s duration (지속시간)`);
+            const dirQuality = dirScore >= 80 ? 'Excellent' : dirScore >= 60 ? 'Good' : 'Needs practice';
+            setCard('lips-roundness', 'Direction Score', `${dirScore || '?'} / 100 - ${dirQuality}`);
+            setCard('breathiness', 'Trajectory Info', `${trajectory.num_frames || '?'} frames, ${formatNumber(trajectory.duration, 2) || '?'}s duration`);
 
-            const genderLabel = gender === 'Male' ? 'Male (남성)' : gender === 'Female' ? 'Female (여성)' : gender;
-            setCard('tension', 'Voice Analysis (음성 분석)', genderLabel ? `Estimated gender: ${genderLabel}` : 'No gender estimation available (성별 추정 정보 없음)');
+            const genderLabel = gender === 'Male' ? 'Male' : gender === 'Female' ? 'Female' : gender;
+            setCard('tension', 'Voice Analysis', genderLabel ? `Estimated gender: ${genderLabel}` : 'No gender estimation available');
 
             // Show plot container and update dual renderer
             if (plotContainer) {
                 const captionText = details.vowel_key
-                    ? `${details.vowel_key} Diphthong trajectory (이중모음 궤적)`
-                    : 'Diphthong trajectory (이중모음 궤적)';
+                    ? `${details.vowel_key} Diphthong trajectory`
+                    : 'Diphthong trajectory';
                 if (plotCaption) plotCaption.textContent = captionText;
                 plotContainer.hidden = false;
 
@@ -281,14 +281,14 @@
             if (f1Val && f1Ref) {
                 const f1Diff = f1Val - f1Ref;
                 if (Math.abs(f1Diff) <= (reference.f1_sd || 80)) {
-                    f1Hint = ' - Good (양호)';
+                    f1Hint = ' - Good';
                 } else if (f1Diff > 0) {
-                    f1Hint = ' - Tongue too low, raise it (혀가 너무 낮음, 올리세요)';
+                    f1Hint = ' - Tongue too low, raise it';
                 } else {
-                    f1Hint = ' - Tongue too high, lower it (혀가 너무 높음, 내리세요)';
+                    f1Hint = ' - Tongue too high, lower it';
                 }
             }
-            setCard('tongue-height', 'Tongue Height (혀 높이)', describeMetric(formants.f1, reference.f1, reference.f1_sd, { unit: 'Hz' }) + f1Hint);
+            setCard('tongue-height', 'Tongue Height', describeMetric(formants.f1, reference.f1, reference.f1_sd, { unit: 'Hz' }) + f1Hint);
 
             // F2: Tongue position description
             const f2Val = formants.f2;
@@ -297,26 +297,26 @@
             if (f2Val && f2Ref) {
                 const f2Diff = f2Val - f2Ref;
                 if (Math.abs(f2Diff) <= (reference.f2_sd || 120)) {
-                    f2Hint = ' - Good (양호)';
+                    f2Hint = ' - Good';
                 } else if (f2Diff > 0) {
-                    f2Hint = ' - Tongue too front, move back (혀가 너무 앞쪽, 뒤로 이동)';
+                    f2Hint = ' - Tongue too front, move back';
                 } else {
-                    f2Hint = ' - Tongue too back, move forward (혀가 너무 뒤쪽, 앞으로 이동)';
+                    f2Hint = ' - Tongue too back, move forward';
                 }
             }
-            setCard('tongue-backness', 'Tongue Position (혀 위치)', describeMetric(formants.f2, reference.f2, reference.f2_sd, { unit: 'Hz' }) + f2Hint);
+            setCard('tongue-backness', 'Tongue Position', describeMetric(formants.f2, reference.f2, reference.f2_sd, { unit: 'Hz' }) + f2Hint);
 
-            setCard('lips-roundness', 'Lips Roundness (입술 모양)', describeMetric(formants.f3, reference.f3, null, { unit: 'Hz' }));
-            setCard('breathiness', 'Recording Quality (녹음 품질)', qualityHint || 'Good recording quality (녹음 품질 양호)');
+            setCard('lips-roundness', 'Lips Roundness', describeMetric(formants.f3, reference.f3, null, { unit: 'Hz' }));
+            setCard('breathiness', 'Recording Quality', qualityHint || 'Good recording quality');
 
-            const genderLabel = gender === 'Male' ? 'Male (남성)' : gender === 'Female' ? 'Female (여성)' : gender;
-            setCard('tension', 'Voice Analysis (음성 분석)', genderLabel ? `Estimated gender: ${genderLabel}` : 'No gender estimation available (성별 추정 정보 없음)');
+            const genderLabel = gender === 'Male' ? 'Male' : gender === 'Female' ? 'Female' : gender;
+            setCard('tension', 'Voice Analysis', genderLabel ? `Estimated gender: ${genderLabel}` : 'No gender estimation available');
 
             // Show plot container and update dual renderer
             if (plotContainer) {
                 const captionText = details.vowel_key
-                    ? `${details.vowel_key} Formant position (포만트 위치)`
-                    : 'Formant position (포만트 위치)';
+                    ? `${details.vowel_key} Formant position`
+                    : 'Formant position';
                 if (plotCaption) plotCaption.textContent = captionText;
                 plotContainer.hidden = false;
 
@@ -372,7 +372,7 @@
 
         const combinedAdvice = adviceList.length ? adviceList.join(' ') : coaching;
         if (combinedAdvice) {
-            setCard('tension', '코칭 (Coaching)', combinedAdvice);
+            setCard('tension', 'Coaching', combinedAdvice);
         }
     };
 
@@ -381,10 +381,10 @@
         const type = data.analysis_type;
         if (type === 'vowel') {
             renderVowelCards(data);
-            setCard('total', null, '모음 분석 (Vowel analysis)');
+            setCard('total', null, 'Vowel analysis');
         } else if (type === 'consonant') {
             renderConsonantCards(data);
-            setCard('total', null, '자음 분석 (Consonant analysis)');
+            setCard('total', null, 'Consonant analysis');
         }
     };
 
@@ -453,7 +453,7 @@
     const initialSound = localStorage.getItem('selectedSound') ||
         (soundSymbolEl && soundSymbolEl.textContent ? soundSymbolEl.textContent.trim() : '');
     const initialDuration = getRecordingDuration(initialSound) / 1000;
-    setStatus(`버튼을 눌러 ${initialDuration}초간 녹음하세요. (Press the button to record for ${initialDuration} second${initialDuration > 1 ? 's' : ''}.)`);
+    setStatus(`Press the button to record for ${initialDuration} second${initialDuration > 1 ? 's' : ''}.`);
     resetCards();
     setScore('');
     setFeedback('');
@@ -476,7 +476,7 @@
         const recordingDuration = getRecordingDuration(currentSound);
         const durationSec = recordingDuration / 1000;
 
-        setStatus(`녹음 중... (${durationSec}초) (Recording… ${durationSec} second${durationSec > 1 ? 's' : ''})`);
+        setStatus(`Recording... (${durationSec} second${durationSec > 1 ? 's' : ''})`);
 
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -492,7 +492,7 @@
                 btn.disabled = false;
                 btn.classList.remove('recording');
                 btn.setAttribute('aria-pressed', 'false');
-                setStatus('분석 중... (Analyzing...)');
+                setStatus('Analyzing...');
 
                 stream.getTracks().forEach(track => track.stop());
 
@@ -503,7 +503,7 @@
                         (soundSymbolEl && soundSymbolEl.textContent ? soundSymbolEl.textContent.trim() : '');
 
                     if (!sound) {
-                        setStatus('선택된 발음 기호를 찾을 수 없습니다. (Could not find selected phonetic symbol.)');
+                        setStatus('Could not find selected phonetic symbol.');
                         return;
                     }
 
@@ -548,12 +548,12 @@
                     }
                     setFeedback(feedbackItems);
                     renderCardsForAnalysis(data);
-                    setStatus('분석이 완료되었습니다. 다시 녹음하려면 버튼을 누르세요. (Analysis complete. Press the button to record again.)');
+                    setStatus('Analysis complete. Press the button to record again.');
                 } catch (err) {
                     console.error('Failed to send recording for analysis:', err);
-                    const errorMessage = err && err.message ? err.message : '분석 요청에 실패했습니다. (Failed to send analysis request.)';
-                    setStatus(`분석 실패: ${errorMessage} (Analysis failed: ${errorMessage})`);
-                    setFeedback([`분석 실패: ${errorMessage} (Analysis failed: ${errorMessage})`]);
+                    const errorMessage = err && err.message ? err.message : 'Failed to send analysis request.';
+                    setStatus(`Analysis failed: ${errorMessage}`);
+                    setFeedback([`Analysis failed: ${errorMessage}`]);
                     setScore('');
                     resetCards();
                 }
@@ -571,7 +571,7 @@
             btn.disabled = false;
             btn.classList.remove('recording');
             btn.setAttribute('aria-pressed', 'false');
-            setStatus('마이크 접근에 실패했습니다. 권한을 확인하세요. (Failed to access microphone. Check permissions.)');
+            setStatus('Failed to access microphone. Check permissions.');
             resetCards();
         }
     }

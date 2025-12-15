@@ -32,8 +32,9 @@ class DualPlotRenderer {
         this.initializeCanvases();
 
         // Formant space ranges (Hz) - inverted for chart display
-        this.f1Range = [900, 200];  // High to low (inverted Y axis)
-        this.f2Range = [3000, 500]; // High to low (inverted X axis)
+        // Extended range to accommodate all Korean vowels including ㅏ (F1 ~1000Hz)
+        this.f1Range = [1000, 200];  // High to low (inverted Y axis)
+        this.f2Range = [3000, 500];  // High to low (inverted X axis)
 
         // Articulatory space ranges (matches backend VOWEL_ARTICULATORY_MAP)
         this.articulatoryRange = {
@@ -53,15 +54,20 @@ class DualPlotRenderer {
         this.calibrationPoints = [];
         this.referenceVowels = [];
 
+        // Load previous point from localStorage for Old→New animation
+        this.loadPreviousPointFromStorage();
+
         // Personalized Affine transform
         this.affineA = null;
         this.affineB = null;
 
         // Animation state
         this.animationProgress = 0;
-        this.animationDuration = 1500;
+        this.animationDuration = 2000;  // Animation time (Old→Now movement)
+        this.animationDelay = 1500;     // Show Old+Now statically for 1.5s before animating
         this.animationFrame = null;
         this.trajectoryAnimationDuration = 3500;
+        this.isShowingStaticOld = false;  // Phase 1: show Old and Now statically
 
         // Achievement score (0-100)
         this.achievementScore = 0;
@@ -87,6 +93,57 @@ class DualPlotRenderer {
         this.formantCanvas.height = this.height;
         this.articulatoryCanvas.width = this.width;
         this.articulatoryCanvas.height = this.height;
+    }
+
+    /**
+     * Load previous point from localStorage for Old→New animation
+     */
+    loadPreviousPointFromStorage() {
+        try {
+            const soundSymbol = localStorage.getItem('selectedSound') || '';
+            if (!soundSymbol) return;
+
+            const storageKey = `kospa_lastPoint_${soundSymbol}`;
+            const stored = localStorage.getItem(storageKey);
+            if (stored) {
+                const parsed = JSON.parse(stored);
+                // Only load if data is recent (within 24 hours)
+                if (parsed.timestamp && Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
+                    this.previousPoint = {
+                        f1: parsed.f1,
+                        f2: parsed.f2,
+                        x: parsed.x,
+                        y: parsed.y
+                    };
+                    console.log('[DualPlotRenderer] Loaded previous point from storage:', this.previousPoint);
+                }
+            }
+        } catch (e) {
+            console.warn('[DualPlotRenderer] Failed to load previous point:', e);
+        }
+    }
+
+    /**
+     * Save current point to localStorage for future Old→New animation
+     */
+    saveCurrentPointToStorage() {
+        try {
+            const soundSymbol = localStorage.getItem('selectedSound') || '';
+            if (!soundSymbol || !this.currentPoint) return;
+
+            const storageKey = `kospa_lastPoint_${soundSymbol}`;
+            const data = {
+                f1: this.currentPoint.f1,
+                f2: this.currentPoint.f2,
+                x: this.currentPoint.x,
+                y: this.currentPoint.y,
+                timestamp: Date.now()
+            };
+            localStorage.setItem(storageKey, JSON.stringify(data));
+            console.log('[DualPlotRenderer] Saved current point to storage:', data);
+        } catch (e) {
+            console.warn('[DualPlotRenderer] Failed to save current point:', e);
+        }
     }
 
     /**
@@ -174,8 +231,14 @@ class DualPlotRenderer {
 
     /**
      * Set new point and animate
+     * Animation flow: Show Old first → Wait for UI to render → Animate to Now
      */
     setPoint(data) {
+        // Try to load previous point from storage if not already loaded
+        if (!this.previousPoint && !this.currentPoint) {
+            this.loadPreviousPointFromStorage();
+        }
+
         if (this.currentPoint) {
             this.previousPoint = { ...this.currentPoint };
         }
@@ -227,8 +290,25 @@ class DualPlotRenderer {
             this.animationFrame = null;
         }
 
+        // Phase 1: Show static view with Old point first (if exists)
+        // Wait for results UI to fully render before starting animation
         this.animationProgress = 0;
-        this.animate();
+        this.isShowingStaticOld = !!this.previousPoint;
+
+        // Draw initial state showing Old and Now statically
+        this.draw();
+
+        // Phase 2: After delay, start animation from Old to Now
+        const startDelay = this.previousPoint ? this.animationDelay : 100;
+        console.log('[DualPlotRenderer] Will start animation after', startDelay, 'ms delay');
+
+        setTimeout(() => {
+            this.isShowingStaticOld = false;
+            this.animate();
+        }, startDelay);
+
+        // Save current point for future Old→New animation
+        this.saveCurrentPointToStorage();
     }
 
     /**
@@ -376,70 +456,99 @@ class DualPlotRenderer {
 
         // Draw movement trail and animation from previous to current point
         if (this.currentPoint) {
-            const progress = this.easeOutCubic(this.animationProgress);
-            let cx, cy;
-
             const currX = this.f2ToCanvasX(this.currentPoint.f2);
             const currY = this.f1ToCanvasY(this.currentPoint.f1);
 
-            // Animate position from previous to current with visible trail
-            if (this.previousPoint && this.animationProgress < 1) {
+            // Phase 1: Show Old and Now statically (before animation starts)
+            if (this.isShowingStaticOld && this.previousPoint) {
                 const prevX = this.f2ToCanvasX(this.previousPoint.f2);
                 const prevY = this.f1ToCanvasY(this.previousPoint.f1);
 
-                // Draw the trail line (fading as animation progresses)
-                const trailOpacity = Math.max(0, 0.4 * (1 - progress));  // Softer
-                if (trailOpacity > 0.05) {
-                    ctx.beginPath();
-                    ctx.moveTo(prevX, prevY);
-                    ctx.lineTo(currX, currY);
-                    ctx.strokeStyle = `rgba(251, 146, 60, ${trailOpacity})`;  // Softer orange
-                    ctx.lineWidth = 3;
-                    ctx.setLineDash([6, 3]);
-                    ctx.stroke();
-                    ctx.setLineDash([]);
-                }
+                // Draw dashed line connecting Old → Now
+                ctx.beginPath();
+                ctx.moveTo(prevX, prevY);
+                ctx.lineTo(currX, currY);
+                ctx.strokeStyle = 'rgba(148, 163, 184, 0.4)';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([6, 4]);
+                ctx.stroke();
+                ctx.setLineDash([]);
 
-                // Draw fading previous point
-                const fadeOpacity = Math.max(0, 0.4 * (1 - progress));  // Softer
-                if (fadeOpacity > 0.05) {
-                    this.drawPoint(ctx, prevX, prevY, 5, '#94a3b8', fadeOpacity, 'Prev', 9);
-                }
+                // Draw Old point with emphasis
+                ctx.beginPath();
+                ctx.arc(prevX, prevY, 16, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(100, 116, 139, 0.3)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                this.drawPoint(ctx, prevX, prevY, 8, '#64748b', 0.9, 'Old', 12);
 
-                // Interpolate current position
-                cx = prevX + (currX - prevX) * progress;
-                cy = prevY + (currY - prevY) * progress;
-
-                // Draw intermediate ghost points for "주르륵" effect
-                const numGhosts = 5;
-                for (let i = 1; i < numGhosts; i++) {
-                    const t = (progress - i * 0.08);
-                    if (t > 0 && t < 1) {
-                        const ghostX = prevX + (currX - prevX) * t;
-                        const ghostY = prevY + (currY - prevY) * t;
-                        const ghostOpacity = 0.25 * (1 - i / numGhosts) * (1 - progress);  // Softer
-                        ctx.beginPath();
-                        ctx.arc(ghostX, ghostY, 4, 0, Math.PI * 2);
-                        ctx.fillStyle = `rgba(251, 146, 60, ${ghostOpacity})`;  // Softer orange
-                        ctx.fill();
-                    }
-                }
-            } else {
-                cx = currX;
-                cy = currY;
+                // Draw Now point
+                this.drawPoint(ctx, currX, currY, 10, '#fb923c', 0.9, 'Now', 12);
             }
+            // Phase 2: Animate from Old to Now
+            else {
+                const progress = this.easeOutCubic(this.animationProgress);
+                let cx, cy;
 
-            const opacity = 0.25 + 0.55 * progress;  // Softer opacity
-            const radius = 6 + 4 * progress;
-            this.drawPoint(ctx, cx, cy, radius, '#fb923c', opacity, 'Now', 11);  // Softer orange
+                // Animate position from previous to current with visible trail
+                if (this.previousPoint && this.animationProgress < 1) {
+                    const prevX = this.f2ToCanvasX(this.previousPoint.f2);
+                    const prevY = this.f1ToCanvasY(this.previousPoint.f1);
 
-            // Draw line to target (distance indicator)
-            if (this.targetPoint && progress > 0.3) {
-                this.drawDistanceLine(ctx, cx, cy,
-                    this.f2ToCanvasX(this.targetPoint.f2),
-                    this.f1ToCanvasY(this.targetPoint.f1),
-                    (progress - 0.3) / 0.7
-                );
+                    // Draw the trail line (fading as animation progresses)
+                    const trailOpacity = Math.max(0, 0.5 * (1 - progress));
+                    if (trailOpacity > 0.05) {
+                        ctx.beginPath();
+                        ctx.moveTo(prevX, prevY);
+                        ctx.lineTo(currX, currY);
+                        ctx.strokeStyle = `rgba(251, 146, 60, ${trailOpacity})`;
+                        ctx.lineWidth = 3;
+                        ctx.setLineDash([6, 3]);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+                    }
+
+                    // Draw fading previous point (Old)
+                    const fadeOpacity = Math.max(0, 0.8 * (1 - progress * 0.8));
+                    if (fadeOpacity > 0.05) {
+                        this.drawPoint(ctx, prevX, prevY, 8, '#64748b', fadeOpacity, 'Old', 11);
+                    }
+
+                    // Interpolate current position
+                    cx = prevX + (currX - prevX) * progress;
+                    cy = prevY + (currY - prevY) * progress;
+
+                    // Draw intermediate ghost points for smooth trail effect
+                    const numGhosts = 5;
+                    for (let i = 1; i < numGhosts; i++) {
+                        const t = (progress - i * 0.1);
+                        if (t > 0 && t < 1) {
+                            const ghostX = prevX + (currX - prevX) * t;
+                            const ghostY = prevY + (currY - prevY) * t;
+                            const ghostOpacity = 0.3 * (1 - i / numGhosts) * (1 - progress);
+                            ctx.beginPath();
+                            ctx.arc(ghostX, ghostY, 4, 0, Math.PI * 2);
+                            ctx.fillStyle = `rgba(251, 146, 60, ${ghostOpacity})`;
+                            ctx.fill();
+                        }
+                    }
+                } else {
+                    cx = currX;
+                    cy = currY;
+                }
+
+                const opacity = 0.4 + 0.5 * progress;
+                const radius = 6 + 4 * progress;
+                this.drawPoint(ctx, cx, cy, radius, '#fb923c', opacity, 'Now', 11);
+
+                // Draw line to target (distance indicator)
+                if (this.targetPoint && progress > 0.3) {
+                    this.drawDistanceLine(ctx, cx, cy,
+                        this.f2ToCanvasX(this.targetPoint.f2),
+                        this.f1ToCanvasY(this.targetPoint.f1),
+                        (progress - 0.3) / 0.7
+                    );
+                }
             }
         }
 
@@ -527,62 +636,91 @@ class DualPlotRenderer {
 
         // Draw movement trail and animation from previous to current point
         if (this.currentPoint) {
-            const progress = this.easeOutCubic(this.animationProgress);
-            let cx, cy;
-
             const currX = this.artToCanvasX(this.currentPoint.x);
             const currY = this.artToCanvasY(this.currentPoint.y);
 
-            // Animate position from previous to current with visible trail
-            if (this.previousPoint && this.animationProgress < 1) {
+            // Phase 1: Show Old and Now statically (before animation starts)
+            if (this.isShowingStaticOld && this.previousPoint) {
                 const prevX = this.artToCanvasX(this.previousPoint.x);
                 const prevY = this.artToCanvasY(this.previousPoint.y);
 
-                // Draw the trail line (fading as animation progresses) - softer
-                const trailOpacity = Math.max(0, 0.4 * (1 - progress));
-                if (trailOpacity > 0.05) {
-                    ctx.beginPath();
-                    ctx.moveTo(prevX, prevY);
-                    ctx.lineTo(currX, currY);
-                    ctx.strokeStyle = `rgba(251, 146, 60, ${trailOpacity})`;  // Softer orange
-                    ctx.lineWidth = 3;
-                    ctx.setLineDash([6, 3]);
-                    ctx.stroke();
-                    ctx.setLineDash([]);
-                }
+                // Draw dashed line connecting Old → Now
+                ctx.beginPath();
+                ctx.moveTo(prevX, prevY);
+                ctx.lineTo(currX, currY);
+                ctx.strokeStyle = 'rgba(148, 163, 184, 0.4)';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([6, 4]);
+                ctx.stroke();
+                ctx.setLineDash([]);
 
-                // Draw fading previous point
-                const fadeOpacity = Math.max(0, 0.4 * (1 - progress));
-                if (fadeOpacity > 0.05) {
-                    this.drawPoint(ctx, prevX, prevY, 5, '#94a3b8', fadeOpacity, 'Prev', 9);
-                }
+                // Draw Old point with emphasis
+                ctx.beginPath();
+                ctx.arc(prevX, prevY, 16, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(100, 116, 139, 0.3)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                this.drawPoint(ctx, prevX, prevY, 8, '#64748b', 0.9, 'Old', 12);
 
-                // Interpolate current position
-                cx = prevX + (currX - prevX) * progress;
-                cy = prevY + (currY - prevY) * progress;
-
-                // Draw intermediate ghost points for "주르륵" effect - softer
-                const numGhosts = 5;
-                for (let i = 1; i < numGhosts; i++) {
-                    const t = (progress - i * 0.08);
-                    if (t > 0 && t < 1) {
-                        const ghostX = prevX + (currX - prevX) * t;
-                        const ghostY = prevY + (currY - prevY) * t;
-                        const ghostOpacity = 0.25 * (1 - i / numGhosts) * (1 - progress);
-                        ctx.beginPath();
-                        ctx.arc(ghostX, ghostY, 4, 0, Math.PI * 2);
-                        ctx.fillStyle = `rgba(251, 146, 60, ${ghostOpacity})`;  // Softer orange
-                        ctx.fill();
-                    }
-                }
-            } else {
-                cx = currX;
-                cy = currY;
+                // Draw Now point
+                this.drawPoint(ctx, currX, currY, 10, '#fb923c', 0.9, 'Now', 12);
             }
+            // Phase 2: Animate from Old to Now
+            else {
+                const progress = this.easeOutCubic(this.animationProgress);
+                let cx, cy;
 
-            const opacity = 0.25 + 0.55 * progress;  // Softer opacity
-            const radius = 6 + 4 * progress;
-            this.drawPoint(ctx, cx, cy, radius, '#fb923c', opacity, 'Now', 11);  // Softer orange
+                // Animate position from previous to current with visible trail
+                if (this.previousPoint && this.animationProgress < 1) {
+                    const prevX = this.artToCanvasX(this.previousPoint.x);
+                    const prevY = this.artToCanvasY(this.previousPoint.y);
+
+                    // Draw the trail line (fading as animation progresses)
+                    const trailOpacity = Math.max(0, 0.5 * (1 - progress));
+                    if (trailOpacity > 0.05) {
+                        ctx.beginPath();
+                        ctx.moveTo(prevX, prevY);
+                        ctx.lineTo(currX, currY);
+                        ctx.strokeStyle = `rgba(251, 146, 60, ${trailOpacity})`;
+                        ctx.lineWidth = 3;
+                        ctx.setLineDash([6, 3]);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+                    }
+
+                    // Draw fading previous point (Old)
+                    const fadeOpacity = Math.max(0, 0.8 * (1 - progress * 0.8));
+                    if (fadeOpacity > 0.05) {
+                        this.drawPoint(ctx, prevX, prevY, 8, '#64748b', fadeOpacity, 'Old', 11);
+                    }
+
+                    // Interpolate current position
+                    cx = prevX + (currX - prevX) * progress;
+                    cy = prevY + (currY - prevY) * progress;
+
+                    // Draw intermediate ghost points for smooth trail effect
+                    const numGhosts = 5;
+                    for (let i = 1; i < numGhosts; i++) {
+                        const t = (progress - i * 0.1);
+                        if (t > 0 && t < 1) {
+                            const ghostX = prevX + (currX - prevX) * t;
+                            const ghostY = prevY + (currY - prevY) * t;
+                            const ghostOpacity = 0.3 * (1 - i / numGhosts) * (1 - progress);
+                            ctx.beginPath();
+                            ctx.arc(ghostX, ghostY, 4, 0, Math.PI * 2);
+                            ctx.fillStyle = `rgba(251, 146, 60, ${ghostOpacity})`;
+                            ctx.fill();
+                        }
+                    }
+                } else {
+                    cx = currX;
+                    cy = currY;
+                }
+
+                const opacity = 0.4 + 0.5 * progress;
+                const radius = 6 + 4 * progress;
+                this.drawPoint(ctx, cx, cy, radius, '#fb923c', opacity, 'Now', 11);
+            }
         }
 
         // Draw title and subtitle
@@ -681,7 +819,7 @@ class DualPlotRenderer {
         ctx.lineWidth = 1;
 
         // F1 lines (horizontal)
-        [200, 300, 400, 500, 600, 700, 800, 900].forEach(f1 => {
+        [200, 300, 400, 500, 600, 700, 800, 900, 1000].forEach(f1 => {
             if (f1 < this.f1Range[1] || f1 > this.f1Range[0]) return;
             const y = this.f1ToCanvasY(f1);
             ctx.beginPath();
@@ -810,15 +948,15 @@ class DualPlotRenderer {
         // Use articulatory coordinates (x: 0=front, 1=back; y: 0=low, 1=high)
         // and convert to canvas using our standard functions
 
-        // Vowel quadrangle vertices (matching VOWEL_ARTICULATORY_MAP)
-        // Front-high (ㅣ): x=0.15, y=0.90
-        const frontHigh = [this.artToCanvasX(0.10), this.artToCanvasY(0.95)];
-        // Back-high (ㅜ): x=0.90, y=0.85
-        const backHigh = [this.artToCanvasX(0.95), this.artToCanvasY(0.90)];
-        // Back-low (near ㅓ area): x=0.75, y=0.35
-        const backLow = [this.artToCanvasX(0.85), this.artToCanvasY(0.15)];
-        // Front-low (ㅏ): x=0.50, y=0.20
-        const frontLow = [this.artToCanvasX(0.25), this.artToCanvasY(0.15)];
+        // Vowel quadrangle vertices (extended to accommodate all vowels)
+        // Front-high (ㅣ): x=0.10, y=0.95
+        const frontHigh = [this.artToCanvasX(0.05), this.artToCanvasY(0.98)];
+        // Back-high (ㅜ): x=0.95, y=0.90
+        const backHigh = [this.artToCanvasX(0.98), this.artToCanvasY(0.95)];
+        // Back-low (near ㅓ area): x=0.85, y=0.05
+        const backLow = [this.artToCanvasX(0.90), this.artToCanvasY(0.02)];
+        // Front-low (ㅏ): x=0.25, y=0.05
+        const frontLow = [this.artToCanvasX(0.20), this.artToCanvasY(0.02)];
 
         const topLeft = frontHigh;
         const topRight = backHigh;
@@ -1239,19 +1377,23 @@ class DualPlotRenderer {
 
     animate() {
         const startTime = performance.now();
+        const duration = this.trajectoryHistory.length > 0
+            ? this.trajectoryAnimationDuration
+            : this.animationDuration;
+
+        console.log('[DualPlotRenderer] Starting animation, duration:', duration, 'ms');
 
         const step = (timestamp) => {
             const elapsed = timestamp - startTime;
-            const duration = this.trajectoryHistory.length > 0
-                ? this.trajectoryAnimationDuration
-                : this.animationDuration;
-
             this.animationProgress = Math.min(1, elapsed / duration);
+
             this.draw();
 
-            if (this.animationProgress < 1) {
+            if (elapsed < duration) {
                 this.animationFrame = requestAnimationFrame(step);
             } else {
+                this.animationProgress = 1;
+                this.draw();
                 console.log('[DualPlotRenderer] Animation complete');
             }
         };
