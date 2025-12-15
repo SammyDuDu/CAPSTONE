@@ -27,42 +27,47 @@ def calculate_scaling_factors(
     """
     Calculate F1 and F2 scaling factors from calibration data.
 
-    Compares user's measured formants against standard references
-    to determine how their vocal tract differs from the average.
+    Uses only 2 extreme vowels (ㅣ and ㅜ) for robust estimation:
+    - ㅣ (i): Front-high vowel with highest F2 (~2800Hz female, ~2200Hz male)
+    - ㅜ (u): Back-high vowel with lowest F2 (~800Hz female, ~600Hz male)
+
+    These two vowels are at opposite corners of the vowel space,
+    making them ideal for estimating vocal tract scaling:
+    - Less prone to pronunciation errors (extreme positions)
+    - Together they span the full F2 range
+    - Both are high vowels, providing consistent F1 baseline
 
     Args:
         user_calib: User calibration data
-            {'a': {'f1_mean': 920, 'f2_mean': 1550, ...}, ...}
+            {'i': {'f1_mean': 280, 'f2_mean': 2800, ...}, 'u': {...}}
         standard_ref: Standard reference formants
-            {'a (아)': {'f1': 945, 'f2': 1582, ...}, ...}
 
     Returns:
         (f1_scale, f2_scale): Scaling factors for F1 and F2
-            Values typically range from 0.9 to 1.1
+            Values typically range from 0.85 to 1.15
 
     Example:
-        >>> user_calib = {'a': {'f1_mean': 930, 'f2_mean': 1550}}
-        >>> standard = {'a (아)': {'f1': 945, 'f2': 1582}}
-        >>> calculate_scaling_factors(user_calib, standard)
-        (0.984, 0.980)
+        >>> user_calib = {'i': {'f1_mean': 280, 'f2_mean': 2700}, 'u': {'f1_mean': 340, 'f2_mean': 780}}
+        >>> calculate_scaling_factors(user_calib, STANDARD_FEMALE_FORMANTS)
+        (0.97, 0.96)
     """
-    # Map calibration sounds to vowel keys (5 vowels for full coverage)
-    sound_to_key = {
-        'a': 'a (아)',
-        'i': 'i (이)',
-        'u': 'u (우)',
-        'eo': 'eo (어)',
-        'e': 'e (에)',
+    # Only use ㅣ (front-high) and ㅜ (back-high) for scaling
+    # These are the most reliable vowels for vocal tract estimation
+    calibration_vowels = {
+        'i': 'i (이)',  # Highest F2 (front vowel)
+        'u': 'u (우)',  # Lowest F2 (back vowel)
     }
 
     f1_ratios = []
     f2_ratios = []
 
-    for sound, calib_data in user_calib.items():
-        vowel_key = sound_to_key.get(sound)
-        if not vowel_key or vowel_key not in standard_ref:
+    for sound, vowel_key in calibration_vowels.items():
+        if sound not in user_calib:
+            continue
+        if vowel_key not in standard_ref:
             continue
 
+        calib_data = user_calib[sound]
         std = standard_ref[vowel_key]
 
         # Calculate ratio: user_value / standard_value
@@ -74,7 +79,7 @@ def calculate_scaling_factors(
             f2_ratio = calib_data['f2_mean'] / std['f2']
             f2_ratios.append(f2_ratio)
 
-    # Average the ratios
+    # Average the ratios (from 2 vowels)
     f1_scale = sum(f1_ratios) / len(f1_ratios) if f1_ratios else 1.0
     f2_scale = sum(f2_ratios) / len(f2_ratios) if f2_ratios else 1.0
 
@@ -118,8 +123,8 @@ def get_personalized_reference(
     # Fetch user calibration data
     user_calib = get_user_formants(userid)
 
-    # Check if calibration is complete (need all 5: a, i, u, eo, e)
-    required_sounds = {'a', 'i', 'u', 'eo', 'e'}
+    # Check if calibration is complete (need 2 extreme vowels: i and u)
+    required_sounds = {'i', 'u'}
     if not user_calib or not required_sounds.issubset(user_calib.keys()):
         return None  # Calibration incomplete
 
@@ -145,26 +150,19 @@ def get_personalized_reference(
             'f2_sd': ref_data['f2_sd'] * f2_scale,
         }
 
-    # Override with actual calibration values (more accurate)
-    sound_to_key = {
-        'a': 'a (아)',
-        'i': 'i (이)',
-        'u': 'u (우)',
-        'eo': 'eo (어)',
-        'e': 'e (에)',
-    }
-
-    for sound, calib_data in user_calib.items():
-        vowel_key = sound_to_key.get(sound)
-        if vowel_key and vowel_key in personalized_ref:
-            # Use measured values directly for calibration vowels
-            personalized_ref[vowel_key]['f1'] = calib_data['f1_mean']
-            personalized_ref[vowel_key]['f2'] = calib_data['f2_mean']
-            # Use personalized SD from 3-repeat calibration
-            if calib_data.get('f1_std'):
-                personalized_ref[vowel_key]['f1_sd'] = calib_data['f1_std']
-            if calib_data.get('f2_std'):
-                personalized_ref[vowel_key]['f2_sd'] = calib_data['f2_std']
+    # NOTE: Previously we overrode calibration vowels with measured values directly.
+    # This was problematic for learners (foreigners/hearing impaired) because
+    # incorrect pronunciations would become the "target".
+    #
+    # NEW APPROACH (normalize-only):
+    # - Only apply global scaling (f1_scale, f2_scale) to standard reference
+    # - Target remains the native speaker reference (scaled for vocal tract size)
+    # - User's calibration data is used ONLY for scaling, not as replacement target
+    # - This ensures feedback always guides toward correct pronunciation
+    #
+    # The scaling factors already capture:
+    # - Vocal tract length differences (affects all formants proportionally)
+    # - Microphone/environment characteristics
 
     return personalized_ref
 

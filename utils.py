@@ -188,29 +188,41 @@ def run_vowel_analysis(audio_path: str, symbol: str, userid: int = None) -> dict
     # Determine if this is a diphthong
     is_diphthong = vowel_key in DIPHTHONG_TRAJECTORIES
 
-    # First pass: analyze with standard reference to get gender
-    result, error = analyze_single_audio(audio_path, vowel_key, return_reason=True)
+    # For diphthongs, skip monophthong analysis and go straight to trajectory
+    if is_diphthong:
+        # Use default gender (will be estimated from formants later if needed)
+        gender = "Female"  # Default, can be refined
 
-    if error:
-        raise ValueError(error)
+        # Try to get personalized reference for this user
+        personalized_ref = None
+        if userid:
+            personalized_ref = get_personalized_reference(userid, gender)
 
-    gender = result.get("gender", "Female")
-
-    # Try to get personalized reference for this user
-    personalized_ref = None
-    if userid:
-        personalized_ref = get_personalized_reference(userid, gender)
-
-    # Get reference table for analysis
-    # Use personalized reference if available, otherwise use standard
-    if personalized_ref:
-        ref_table = personalized_ref
+        ref_table = personalized_ref if personalized_ref else STANDARD_FEMALE_FORMANTS
     else:
-        ref_table = (
-            STANDARD_MALE_FORMANTS
-            if gender == "Male"
-            else STANDARD_FEMALE_FORMANTS
-        )
+        # First pass: analyze with standard reference to get gender (monophthongs only)
+        result, error = analyze_single_audio(audio_path, vowel_key, return_reason=True)
+
+        if error:
+            raise ValueError(error)
+
+        gender = result.get("gender", "Female")
+
+        # Try to get personalized reference for this user (for monophthongs)
+        personalized_ref = None
+        if userid:
+            personalized_ref = get_personalized_reference(userid, gender)
+
+        # Get reference table for analysis
+        # Use personalized reference if available, otherwise use standard
+        if personalized_ref:
+            ref_table = personalized_ref
+        else:
+            ref_table = (
+                STANDARD_MALE_FORMANTS
+                if gender == "Male"
+                else STANDARD_FEMALE_FORMANTS
+            )
 
     # === DIPHTHONG TRAJECTORY ANALYSIS ===
     if is_diphthong:
@@ -247,11 +259,18 @@ def run_vowel_analysis(audio_path: str, symbol: str, userid: int = None) -> dict
         except Exception:
             plot_url = None
 
+        # Get start/end vowel reference data for frontend rendering
+        start_vowel_key = DIPHTHONG_TRAJECTORIES[vowel_key]['start']
+        end_vowel_key = DIPHTHONG_TRAJECTORIES[vowel_key]['end']
+
+        start_ref_data = ref_table.get(start_vowel_key, {})
+        end_ref_data = ref_table.get(end_vowel_key, {})
+
         # Return diphthong analysis result
         return {
             "analysis_type": "vowel",
             "score": safe_float(score_result['score']),
-            "feedback": " ".join(score_result['feedback']),
+            "feedback": "\n".join(score_result['feedback']),
             "details": {
                 "symbol": symbol,
                 "vowel_key": vowel_key,
@@ -275,9 +294,24 @@ def run_vowel_analysis(audio_path: str, symbol: str, userid: int = None) -> dict
                     "end_f2": safe_float(end_formants['f2']),
                 },
                 "reference": {
-                    "start_vowel": DIPHTHONG_TRAJECTORIES[vowel_key]['start'],
-                    "end_vowel": DIPHTHONG_TRAJECTORIES[vowel_key]['end'],
+                    "start_vowel": start_vowel_key,
+                    "end_vowel": end_vowel_key,
                     "direction": DIPHTHONG_TRAJECTORIES[vowel_key]['direction'],
+                },
+                # Start/End reference points with formants and SD for frontend ellipse drawing
+                "start_ref": {
+                    "f1": safe_float(start_ref_data.get('f1')),
+                    "f2": safe_float(start_ref_data.get('f2')),
+                    "f1_sd": safe_float(start_ref_data.get('f1_sd')),
+                    "f2_sd": safe_float(start_ref_data.get('f2_sd')),
+                    "label": start_vowel_key.split(' ')[0],  # e.g., "o" from "o (오)"
+                },
+                "end_ref": {
+                    "f1": safe_float(end_ref_data.get('f1')),
+                    "f2": safe_float(end_ref_data.get('f2')),
+                    "f1_sd": safe_float(end_ref_data.get('f1_sd')),
+                    "f2_sd": safe_float(end_ref_data.get('f2_sd')),
+                    "label": end_vowel_key.split(' ')[0],  # e.g., "a" from "a (아)"
                 },
                 "plot_url": plot_url,
             },

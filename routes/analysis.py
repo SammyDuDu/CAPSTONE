@@ -53,8 +53,10 @@ async def calibration_upload(
     Save calibration recording for personalized analysis.
 
     Calibration captures the user's voice characteristics for
-    better scoring accuracy. Requires 5 sounds with 3 samples each:
-    'a' (ㅏ), 'i' (ㅣ), 'u' (ㅜ), 'eo' (ㅓ), 'e' (ㅔ)
+    better scoring accuracy. Requires 2 sounds with 3 samples each:
+    'i' (ㅣ) - front-high vowel, 'u' (ㅜ) - back-high vowel
+
+    These two extreme vowels provide robust vocal tract scaling estimation.
 
     Args:
         audio: Audio file (webm/wav)
@@ -79,8 +81,8 @@ async def calibration_upload(
     if not audio.filename:
         raise HTTPException(status_code=400, detail="No audio file provided.")
 
-    # Validate calibration sound (5 vowels for full coverage)
-    valid_sounds = ['a', 'i', 'u', 'eo', 'e']
+    # Validate calibration sound (2 extreme vowels for robust scaling)
+    valid_sounds = ['i', 'u']  # ㅣ (front-high) and ㅜ (back-high)
     if sound not in valid_sounds:
         raise HTTPException(
             status_code=400,
@@ -102,13 +104,10 @@ async def calibration_upload(
     temp_audio = await save_upload_to_temp(audio)
 
     try:
-        # Map sound codes to vowel keys and symbols
+        # Map sound codes to vowel keys and symbols (2 calibration vowels)
         sound_map = {
-            'a': ('a (아)', 'ㅏ'),
-            'i': ('i (이)', 'ㅣ'),
-            'u': ('u (우)', 'ㅜ'),
-            'eo': ('eo (어)', 'ㅓ'),
-            'e': ('e (에)', 'ㅔ'),
+            'i': ('i (이)', 'ㅣ'),   # Front-high (highest F2)
+            'u': ('u (우)', 'ㅜ'),   # Back-high (lowest F2)
         }
         vowel_key, symbol = sound_map.get(sound)
 
@@ -147,9 +146,9 @@ async def calibration_upload(
         if sound_complete:
             final_stats = finalize_calibration_sound(userid, sound)
 
-        # Check overall calibration progress
+        # Check overall calibration progress (need 2 sounds: i and u)
         calibration_count = get_calibration_count(userid)
-        calibration_complete = calibration_count >= 5
+        calibration_complete = calibration_count >= 2
 
         return {
             "ok": True,

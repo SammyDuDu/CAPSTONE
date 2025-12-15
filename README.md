@@ -9,8 +9,9 @@ instant scoring with targeted feedback.
 - **Modular architecture** – Clean separation of concerns with dedicated modules for config, database, utilities, and routes
 - **Docker deployment** – One-command deployment with PostgreSQL included
 - **Real-time analysis** – 2-second recordings analyzed instantly via `MediaRecorder` API
-- **Vowel engine** – Extracts formants (F1–F3), compares against native speaker references, scores within ±2.5σ
+- **Vowel engine** – Extracts formants (F1–F3), compares against native speaker references, scores within ±1.5σ
 - **Consonant engine** – Measures VOT, frication, nasal energy with same scoring threshold
+- **Diphthong analysis** – Time-series trajectory extraction with direction scoring
 - **Visual feedback** – Vowel space plots overlay learner samples on native target regions
 - **User progress** – Track improvement over time with personal calibration
 
@@ -140,9 +141,9 @@ Organized API endpoints:
 
 ## Scoring System
 
-- **Threshold**: ±2.5σ (standard deviations) from native speaker mean
+- **Threshold**: ±1.5σ (standard deviations) from native speaker mean
 - **Perfect score**: 100 points when within threshold
-- **Penalty**: ~40 points per σ beyond threshold
+- **Penalty**: ~40 points per σ beyond threshold (linear decrease from 1.5σ to 3σ)
 - **Vowels**: Based on F1/F2/F3 formant deviations
 - **Consonants**: Based on VOT, frication, nasal energy, etc.
 

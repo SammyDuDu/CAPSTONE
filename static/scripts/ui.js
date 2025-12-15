@@ -450,14 +450,13 @@
         const calClose = document.getElementById('closeCalibration'); // Get the 'x' button here
         if (!calBtn) return;
 
-        // 5 calibration sounds with 3 samples each
-        // Covers full vowel space: low-central, high-front, high-back, mid-back, mid-front
+        // 2 calibration sounds with 3 samples each
+        // Uses extreme vowels for robust vocal tract scaling:
+        // - ㅣ (i): Front-high vowel (highest F2)
+        // - ㅜ (u): Back-high vowel (lowest F2)
         const calibrationSounds = [
-            { code: 'a', display: 'ㅏ (아)', phonetic: 'ah' },
-            { code: 'i', display: 'ㅣ (이)', phonetic: 'ee' },
-            { code: 'u', display: 'ㅜ (우)', phonetic: 'oo' },
-            { code: 'eo', display: 'ㅓ (어)', phonetic: 'uh' },
-            { code: 'e', display: 'ㅔ (에)', phonetic: 'eh' },
+            { code: 'i', display: 'ㅣ (이)', phonetic: 'ee', hint: 'Smile, tongue high and forward' },
+            { code: 'u', display: 'ㅜ (우)', phonetic: 'oo', hint: 'Round lips, tongue high and back' },
         ];
         const SAMPLES_PER_SOUND = 3;
 

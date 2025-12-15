@@ -25,7 +25,7 @@ DB_URL = os.environ.get(
     "postgresql://kospa:kospa123@db:5432/kospa_db"
 )
 
-print(f"DEBUG: Using DB_URL: {DB_URL}")
+# DB_URL loaded from environment (debug output removed for security)
 
 # =============================================================================
 # APPLICATION SETTINGS

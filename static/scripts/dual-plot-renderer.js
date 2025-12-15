@@ -24,20 +24,24 @@ class DualPlotRenderer {
         this.formantCtx = this.formantCanvas.getContext('2d');
         this.articulatoryCtx = this.articulatoryCanvas.getContext('2d');
 
-        // Canvas dimensions
-        this.width = 420;
-        this.height = 380;
+        // Canvas dimensions (larger for better visibility)
+        this.width = 500;
+        this.height = 450;
 
         // Initialize canvases
         this.initializeCanvases();
 
         // Formant space ranges (Hz) - inverted for chart display
-        this.f1Range = [900, 200];  // High to low (inverted Y axis)
-        this.f2Range = [3000, 500]; // High to low (inverted X axis)
+        // Extended range to accommodate all Korean vowels including ㅏ (F1 ~1000Hz)
+        // Formant ranges - expanded to accommodate more vowel variations
+        // F1: 200-1100 Hz covers all Korean vowels including outliers
+        // F2: 500-3200 Hz covers front vowels like ㅣ
+        this.f1Range = [1100, 200];  // High to low (inverted Y axis for phonetic convention)
+        this.f2Range = [3200, 500];  // High to low (inverted X axis for phonetic convention)
 
-        // Articulatory space ranges
+        // Articulatory space ranges (matches backend VOWEL_ARTICULATORY_MAP)
         this.articulatoryRange = {
-            x: [0, 1],    // Backness: 0=back, 1=front
+            x: [0, 1],    // Backness: 0=front, 1=back (ㅣ=0.15, ㅜ=0.90)
             y: [0, 1]     // Height: 0=low, 1=high
         };
 
@@ -53,15 +57,20 @@ class DualPlotRenderer {
         this.calibrationPoints = [];
         this.referenceVowels = [];
 
+        // Load previous point from localStorage for Old→New animation
+        this.loadPreviousPointFromStorage();
+
         // Personalized Affine transform
         this.affineA = null;
         this.affineB = null;
 
         // Animation state
         this.animationProgress = 0;
-        this.animationDuration = 1500;
+        this.animationDuration = 2000;  // Animation time (Old→Now movement)
+        this.animationDelay = 1500;     // Show Old+Now statically for 1.5s before animating
         this.animationFrame = null;
         this.trajectoryAnimationDuration = 3500;
+        this.isShowingStaticOld = false;  // Phase 1: show Old and Now statically
 
         // Achievement score (0-100)
         this.achievementScore = 0;
@@ -69,6 +78,14 @@ class DualPlotRenderer {
         // Diphthong start/end reference
         this.diphthongStartRef = null;
         this.diphthongEndRef = null;
+
+        // Mouth cross-section background image
+        this.mouthImage = new Image();
+        this.mouthImage.src = '/static/images/mouth-crosssection.png';
+        this.mouthImage.onload = () => {
+            console.log('[DualPlotRenderer] Mouth image loaded');
+            this.draw();
+        };
 
         console.log('[DualPlotRenderer] Initialized');
         this.draw();
@@ -79,6 +96,57 @@ class DualPlotRenderer {
         this.formantCanvas.height = this.height;
         this.articulatoryCanvas.width = this.width;
         this.articulatoryCanvas.height = this.height;
+    }
+
+    /**
+     * Load previous point from localStorage for Old→New animation
+     */
+    loadPreviousPointFromStorage() {
+        try {
+            const soundSymbol = localStorage.getItem('selectedSound') || '';
+            if (!soundSymbol) return;
+
+            const storageKey = `kospa_lastPoint_${soundSymbol}`;
+            const stored = localStorage.getItem(storageKey);
+            if (stored) {
+                const parsed = JSON.parse(stored);
+                // Only load if data is recent (within 24 hours)
+                if (parsed.timestamp && Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
+                    this.previousPoint = {
+                        f1: parsed.f1,
+                        f2: parsed.f2,
+                        x: parsed.x,
+                        y: parsed.y
+                    };
+                    console.log('[DualPlotRenderer] Loaded previous point from storage:', this.previousPoint);
+                }
+            }
+        } catch (e) {
+            console.warn('[DualPlotRenderer] Failed to load previous point:', e);
+        }
+    }
+
+    /**
+     * Save current point to localStorage for future Old→New animation
+     */
+    saveCurrentPointToStorage() {
+        try {
+            const soundSymbol = localStorage.getItem('selectedSound') || '';
+            if (!soundSymbol || !this.currentPoint) return;
+
+            const storageKey = `kospa_lastPoint_${soundSymbol}`;
+            const data = {
+                f1: this.currentPoint.f1,
+                f2: this.currentPoint.f2,
+                x: this.currentPoint.x,
+                y: this.currentPoint.y,
+                timestamp: Date.now()
+            };
+            localStorage.setItem(storageKey, JSON.stringify(data));
+            console.log('[DualPlotRenderer] Saved current point to storage:', data);
+        } catch (e) {
+            console.warn('[DualPlotRenderer] Failed to save current point:', e);
+        }
     }
 
     /**
@@ -166,8 +234,14 @@ class DualPlotRenderer {
 
     /**
      * Set new point and animate
+     * Animation flow: Show Old first → Wait for UI to render → Animate to Now
      */
     setPoint(data) {
+        // Try to load previous point from storage if not already loaded
+        if (!this.previousPoint && !this.currentPoint) {
+            this.loadPreviousPointFromStorage();
+        }
+
         if (this.currentPoint) {
             this.previousPoint = { ...this.currentPoint };
         }
@@ -201,10 +275,16 @@ class DualPlotRenderer {
 
         // Handle trajectory
         if (data.trajectory && Array.isArray(data.trajectory)) {
+            console.log('[DualPlotRenderer] Adding trajectory with', data.trajectory.length, 'points');
+            console.log('[DualPlotRenderer] First point:', data.trajectory[0]);
+            console.log('[DualPlotRenderer] Last point:', data.trajectory[data.trajectory.length - 1]);
             this.trajectoryHistory.push({
                 points: data.trajectory,
                 timestamp: Date.now()
             });
+            console.log('[DualPlotRenderer] trajectoryHistory now has', this.trajectoryHistory.length, 'trajectories');
+        } else {
+            console.log('[DualPlotRenderer] No trajectory in data. data.trajectory:', data.trajectory);
         }
 
         // Cancel previous animation
@@ -213,8 +293,25 @@ class DualPlotRenderer {
             this.animationFrame = null;
         }
 
+        // Phase 1: Show static view with Old point first (if exists)
+        // Wait for results UI to fully render before starting animation
         this.animationProgress = 0;
-        this.animate();
+        this.isShowingStaticOld = !!this.previousPoint;
+
+        // Draw initial state showing Old and Now statically
+        this.draw();
+
+        // Phase 2: After delay, start animation from Old to Now
+        const startDelay = this.previousPoint ? this.animationDelay : 100;
+        console.log('[DualPlotRenderer] Will start animation after', startDelay, 'ms delay');
+
+        setTimeout(() => {
+            this.isShowingStaticOld = false;
+            this.animate();
+        }, startDelay);
+
+        // Save current point for future Old→New animation
+        this.saveCurrentPointToStorage();
     }
 
     /**
@@ -237,13 +334,17 @@ class DualPlotRenderer {
 
     f1ToCanvasY(f1) {
         const chartHeight = this.height - this.margin.top - this.margin.bottom;
-        const normalized = (f1 - this.f1Range[1]) / (this.f1Range[0] - this.f1Range[1]);
+        // Clamp F1 to range to prevent drawing outside chart
+        const clampedF1 = Math.max(this.f1Range[1], Math.min(this.f1Range[0], f1));
+        const normalized = (clampedF1 - this.f1Range[1]) / (this.f1Range[0] - this.f1Range[1]);
         return this.margin.top + chartHeight * normalized;
     }
 
     f2ToCanvasX(f2) {
         const chartWidth = this.width - this.margin.left - this.margin.right;
-        const normalized = (f2 - this.f2Range[1]) / (this.f2Range[0] - this.f2Range[1]);
+        // Clamp F2 to range to prevent drawing outside chart
+        const clampedF2 = Math.max(this.f2Range[1], Math.min(this.f2Range[0], f2));
+        const normalized = (clampedF2 - this.f2Range[1]) / (this.f2Range[0] - this.f2Range[1]);
         return this.width - this.margin.right - chartWidth * normalized;
     }
 
@@ -275,11 +376,20 @@ class DualPlotRenderer {
                 y: Math.max(0, Math.min(1, y))
             };
         }
-        // Generic fallback
-        return {
-            x: (f2 - 500) / (3000 - 500),
-            y: 1 - ((f1 - 200) / (900 - 200))
-        };
+        // Fallback mapping (matches backend VOWEL_ARTICULATORY_MAP)
+        // x: 0=front, 1=back (higher F2 = front vowel = smaller x)
+        // y: 0=low, 1=high (lower F1 = high vowel = higher y)
+        //
+        // Examples: ㅣ(i) has high F2 (~2800Hz) → x ≈ 0.15 (front/left)
+        //           ㅜ(u) has low F2 (~800Hz) → x ≈ 0.90 (back/right)
+        const [f1Min, f1Max] = [this.f1Range[1], this.f1Range[0]]; // 200, 900
+        const [f2Min, f2Max] = [this.f2Range[1], this.f2Range[0]]; // 500, 3000
+
+        // FIXED: Invert x so high F2 (front vowel) → small x (left side)
+        const xNorm = Math.max(0, Math.min(1, 1 - (f2 - f2Min) / (f2Max - f2Min)));
+        const yNorm = Math.max(0, Math.min(1, 1 - (f1 - f1Min) / (f1Max - f1Min)));
+
+        return { x: xNorm, y: yNorm };
     }
 
     artToCanvasX(x) {
@@ -344,77 +454,108 @@ class DualPlotRenderer {
         }
 
         // Draw trajectories
+        console.log('[DualPlotRenderer] Drawing', this.trajectoryHistory.length, 'trajectories on formant chart');
         this.trajectoryHistory.forEach((traj, idx) => {
             const isFaded = idx < this.trajectoryHistory.length - 1;
+            console.log('[DualPlotRenderer] Drawing trajectory', idx, 'with', traj.points.length, 'points, isFaded:', isFaded);
             this.drawTrajectoryOnFormant(ctx, traj.points, isFaded);
         });
 
         // Draw movement trail and animation from previous to current point
         if (this.currentPoint) {
-            const progress = this.easeOutCubic(this.animationProgress);
-            let cx, cy;
-
             const currX = this.f2ToCanvasX(this.currentPoint.f2);
             const currY = this.f1ToCanvasY(this.currentPoint.f1);
 
-            // Animate position from previous to current with visible trail
-            if (this.previousPoint && this.animationProgress < 1) {
+            // Phase 1: Show Old and Now statically (before animation starts)
+            if (this.isShowingStaticOld && this.previousPoint) {
                 const prevX = this.f2ToCanvasX(this.previousPoint.f2);
                 const prevY = this.f1ToCanvasY(this.previousPoint.f1);
 
-                // Draw the trail line (fading as animation progresses)
-                const trailOpacity = Math.max(0, 0.6 * (1 - progress));
-                if (trailOpacity > 0.05) {
-                    ctx.beginPath();
-                    ctx.moveTo(prevX, prevY);
-                    ctx.lineTo(currX, currY);
-                    ctx.strokeStyle = `rgba(239, 68, 68, ${trailOpacity})`;
-                    ctx.lineWidth = 3;
-                    ctx.setLineDash([6, 3]);
-                    ctx.stroke();
-                    ctx.setLineDash([]);
-                }
+                // Draw dashed line connecting Old → Now
+                ctx.beginPath();
+                ctx.moveTo(prevX, prevY);
+                ctx.lineTo(currX, currY);
+                ctx.strokeStyle = 'rgba(148, 163, 184, 0.4)';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([6, 4]);
+                ctx.stroke();
+                ctx.setLineDash([]);
 
-                // Draw fading previous point
-                const fadeOpacity = Math.max(0, 0.5 * (1 - progress));
-                if (fadeOpacity > 0.05) {
-                    this.drawPoint(ctx, prevX, prevY, 5, '#94a3b8', fadeOpacity, 'Prev', 9);
-                }
+                // Draw Old point with emphasis
+                ctx.beginPath();
+                ctx.arc(prevX, prevY, 16, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(100, 116, 139, 0.3)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                this.drawPoint(ctx, prevX, prevY, 8, '#64748b', 0.9, 'Old', 12);
 
-                // Interpolate current position
-                cx = prevX + (currX - prevX) * progress;
-                cy = prevY + (currY - prevY) * progress;
-
-                // Draw intermediate ghost points for "주르륵" effect
-                const numGhosts = 5;
-                for (let i = 1; i < numGhosts; i++) {
-                    const t = (progress - i * 0.08);
-                    if (t > 0 && t < 1) {
-                        const ghostX = prevX + (currX - prevX) * t;
-                        const ghostY = prevY + (currY - prevY) * t;
-                        const ghostOpacity = 0.3 * (1 - i / numGhosts) * (1 - progress);
-                        ctx.beginPath();
-                        ctx.arc(ghostX, ghostY, 4, 0, Math.PI * 2);
-                        ctx.fillStyle = `rgba(239, 68, 68, ${ghostOpacity})`;
-                        ctx.fill();
-                    }
-                }
-            } else {
-                cx = currX;
-                cy = currY;
+                // Draw Now point
+                this.drawPoint(ctx, currX, currY, 10, '#fb923c', 0.9, 'Now', 12);
             }
+            // Phase 2: Animate from Old to Now
+            else {
+                const progress = this.easeOutCubic(this.animationProgress);
+                let cx, cy;
 
-            const opacity = 0.3 + 0.7 * progress;
-            const radius = 6 + 4 * progress;
-            this.drawPoint(ctx, cx, cy, radius, '#ef4444', opacity, 'You', 11);
+                // Animate position from previous to current with visible trail
+                if (this.previousPoint && this.animationProgress < 1) {
+                    const prevX = this.f2ToCanvasX(this.previousPoint.f2);
+                    const prevY = this.f1ToCanvasY(this.previousPoint.f1);
 
-            // Draw line to target (distance indicator)
-            if (this.targetPoint && progress > 0.3) {
-                this.drawDistanceLine(ctx, cx, cy,
-                    this.f2ToCanvasX(this.targetPoint.f2),
-                    this.f1ToCanvasY(this.targetPoint.f1),
-                    (progress - 0.3) / 0.7
-                );
+                    // Draw the trail line (fading as animation progresses)
+                    const trailOpacity = Math.max(0, 0.5 * (1 - progress));
+                    if (trailOpacity > 0.05) {
+                        ctx.beginPath();
+                        ctx.moveTo(prevX, prevY);
+                        ctx.lineTo(currX, currY);
+                        ctx.strokeStyle = `rgba(251, 146, 60, ${trailOpacity})`;
+                        ctx.lineWidth = 3;
+                        ctx.setLineDash([6, 3]);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+                    }
+
+                    // Draw fading previous point (Old)
+                    const fadeOpacity = Math.max(0, 0.8 * (1 - progress * 0.8));
+                    if (fadeOpacity > 0.05) {
+                        this.drawPoint(ctx, prevX, prevY, 8, '#64748b', fadeOpacity, 'Old', 11);
+                    }
+
+                    // Interpolate current position
+                    cx = prevX + (currX - prevX) * progress;
+                    cy = prevY + (currY - prevY) * progress;
+
+                    // Draw intermediate ghost points for smooth trail effect
+                    const numGhosts = 5;
+                    for (let i = 1; i < numGhosts; i++) {
+                        const t = (progress - i * 0.1);
+                        if (t > 0 && t < 1) {
+                            const ghostX = prevX + (currX - prevX) * t;
+                            const ghostY = prevY + (currY - prevY) * t;
+                            const ghostOpacity = 0.3 * (1 - i / numGhosts) * (1 - progress);
+                            ctx.beginPath();
+                            ctx.arc(ghostX, ghostY, 4, 0, Math.PI * 2);
+                            ctx.fillStyle = `rgba(251, 146, 60, ${ghostOpacity})`;
+                            ctx.fill();
+                        }
+                    }
+                } else {
+                    cx = currX;
+                    cy = currY;
+                }
+
+                const opacity = 0.4 + 0.5 * progress;
+                const radius = 6 + 4 * progress;
+                this.drawPoint(ctx, cx, cy, radius, '#fb923c', opacity, 'Now', 11);
+
+                // Draw line to target (distance indicator)
+                if (this.targetPoint && progress > 0.3) {
+                    this.drawDistanceLine(ctx, cx, cy,
+                        this.f2ToCanvasX(this.targetPoint.f2),
+                        this.f1ToCanvasY(this.targetPoint.f1),
+                        (progress - 0.3) / 0.7
+                    );
+                }
             }
         }
 
@@ -443,12 +584,28 @@ class DualPlotRenderer {
         // Clear
         ctx.clearRect(0, 0, w, h);
 
-        // Background - slightly different color to distinguish from formant chart
-        ctx.fillStyle = '#fefce8';  // Warm yellow tint
+        // Background - mouth cross-section image or fallback color
+        ctx.fillStyle = '#fefce8';  // Warm yellow tint fallback
         ctx.fillRect(0, 0, w, h);
 
-        // Draw trapezoid (mouth cavity shape)
-        this.drawTrapezoid(ctx);
+        // Background image disabled due to watermark issue
+        // TODO: Enable when clean image is available
+        // if (this.mouthImage && this.mouthImage.complete && this.mouthImage.naturalWidth > 0) {
+        //     ctx.globalAlpha = 0.25;
+        //     const imgAspect = this.mouthImage.naturalWidth / this.mouthImage.naturalHeight;
+        //     const canvasAspect = w / h;
+        //     let drawW, drawH, drawX, drawY;
+        //     if (imgAspect > canvasAspect) {
+        //         drawH = h; drawW = h * imgAspect; drawX = (w - drawW) / 2; drawY = 0;
+        //     } else {
+        //         drawW = w; drawH = w / imgAspect; drawX = 0; drawY = (h - drawH) / 2;
+        //     }
+        //     ctx.drawImage(this.mouthImage, drawX, drawY, drawW, drawH);
+        //     ctx.globalAlpha = 1;
+        // }
+
+        // Draw vowel quadrangle overlay (instead of trapezoid)
+        this.drawVowelQuadrangle(ctx);
 
         // Draw reference vowels (always visible as landmarks)
         this.referenceVowels.forEach(pt => {
@@ -486,74 +643,103 @@ class DualPlotRenderer {
 
         // Draw movement trail and animation from previous to current point
         if (this.currentPoint) {
-            const progress = this.easeOutCubic(this.animationProgress);
-            let cx, cy;
-
             const currX = this.artToCanvasX(this.currentPoint.x);
             const currY = this.artToCanvasY(this.currentPoint.y);
 
-            // Animate position from previous to current with visible trail
-            if (this.previousPoint && this.animationProgress < 1) {
+            // Phase 1: Show Old and Now statically (before animation starts)
+            if (this.isShowingStaticOld && this.previousPoint) {
                 const prevX = this.artToCanvasX(this.previousPoint.x);
                 const prevY = this.artToCanvasY(this.previousPoint.y);
 
-                // Draw the trail line (fading as animation progresses)
-                const trailOpacity = Math.max(0, 0.6 * (1 - progress));
-                if (trailOpacity > 0.05) {
-                    ctx.beginPath();
-                    ctx.moveTo(prevX, prevY);
-                    ctx.lineTo(currX, currY);
-                    ctx.strokeStyle = `rgba(239, 68, 68, ${trailOpacity})`;
-                    ctx.lineWidth = 3;
-                    ctx.setLineDash([6, 3]);
-                    ctx.stroke();
-                    ctx.setLineDash([]);
-                }
+                // Draw dashed line connecting Old → Now
+                ctx.beginPath();
+                ctx.moveTo(prevX, prevY);
+                ctx.lineTo(currX, currY);
+                ctx.strokeStyle = 'rgba(148, 163, 184, 0.4)';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([6, 4]);
+                ctx.stroke();
+                ctx.setLineDash([]);
 
-                // Draw fading previous point
-                const fadeOpacity = Math.max(0, 0.5 * (1 - progress));
-                if (fadeOpacity > 0.05) {
-                    this.drawPoint(ctx, prevX, prevY, 5, '#94a3b8', fadeOpacity, 'Prev', 9);
-                }
+                // Draw Old point with emphasis
+                ctx.beginPath();
+                ctx.arc(prevX, prevY, 16, 0, Math.PI * 2);
+                ctx.strokeStyle = 'rgba(100, 116, 139, 0.3)';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                this.drawPoint(ctx, prevX, prevY, 8, '#64748b', 0.9, 'Old', 12);
 
-                // Interpolate current position
-                cx = prevX + (currX - prevX) * progress;
-                cy = prevY + (currY - prevY) * progress;
-
-                // Draw intermediate ghost points for "주르륵" effect
-                const numGhosts = 5;
-                for (let i = 1; i < numGhosts; i++) {
-                    const t = (progress - i * 0.08);
-                    if (t > 0 && t < 1) {
-                        const ghostX = prevX + (currX - prevX) * t;
-                        const ghostY = prevY + (currY - prevY) * t;
-                        const ghostOpacity = 0.3 * (1 - i / numGhosts) * (1 - progress);
-                        ctx.beginPath();
-                        ctx.arc(ghostX, ghostY, 4, 0, Math.PI * 2);
-                        ctx.fillStyle = `rgba(239, 68, 68, ${ghostOpacity})`;
-                        ctx.fill();
-                    }
-                }
-            } else {
-                cx = currX;
-                cy = currY;
+                // Draw Now point
+                this.drawPoint(ctx, currX, currY, 10, '#fb923c', 0.9, 'Now', 12);
             }
+            // Phase 2: Animate from Old to Now
+            else {
+                const progress = this.easeOutCubic(this.animationProgress);
+                let cx, cy;
 
-            const opacity = 0.3 + 0.7 * progress;
-            const radius = 6 + 4 * progress;
-            this.drawPoint(ctx, cx, cy, radius, '#ef4444', opacity, 'You', 11);
+                // Animate position from previous to current with visible trail
+                if (this.previousPoint && this.animationProgress < 1) {
+                    const prevX = this.artToCanvasX(this.previousPoint.x);
+                    const prevY = this.artToCanvasY(this.previousPoint.y);
+
+                    // Draw the trail line (fading as animation progresses)
+                    const trailOpacity = Math.max(0, 0.5 * (1 - progress));
+                    if (trailOpacity > 0.05) {
+                        ctx.beginPath();
+                        ctx.moveTo(prevX, prevY);
+                        ctx.lineTo(currX, currY);
+                        ctx.strokeStyle = `rgba(251, 146, 60, ${trailOpacity})`;
+                        ctx.lineWidth = 3;
+                        ctx.setLineDash([6, 3]);
+                        ctx.stroke();
+                        ctx.setLineDash([]);
+                    }
+
+                    // Draw fading previous point (Old)
+                    const fadeOpacity = Math.max(0, 0.8 * (1 - progress * 0.8));
+                    if (fadeOpacity > 0.05) {
+                        this.drawPoint(ctx, prevX, prevY, 8, '#64748b', fadeOpacity, 'Old', 11);
+                    }
+
+                    // Interpolate current position
+                    cx = prevX + (currX - prevX) * progress;
+                    cy = prevY + (currY - prevY) * progress;
+
+                    // Draw intermediate ghost points for smooth trail effect
+                    const numGhosts = 5;
+                    for (let i = 1; i < numGhosts; i++) {
+                        const t = (progress - i * 0.1);
+                        if (t > 0 && t < 1) {
+                            const ghostX = prevX + (currX - prevX) * t;
+                            const ghostY = prevY + (currY - prevY) * t;
+                            const ghostOpacity = 0.3 * (1 - i / numGhosts) * (1 - progress);
+                            ctx.beginPath();
+                            ctx.arc(ghostX, ghostY, 4, 0, Math.PI * 2);
+                            ctx.fillStyle = `rgba(251, 146, 60, ${ghostOpacity})`;
+                            ctx.fill();
+                        }
+                    }
+                } else {
+                    cx = currX;
+                    cy = currY;
+                }
+
+                const opacity = 0.4 + 0.5 * progress;
+                const radius = 6 + 4 * progress;
+                this.drawPoint(ctx, cx, cy, radius, '#fb923c', opacity, 'Now', 11);
+            }
         }
 
         // Draw title and subtitle
         ctx.fillStyle = '#1e293b';
         ctx.font = 'bold 13px Inter, system-ui, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('Tongue Position (혀 위치)', w / 2, 18);
+        ctx.fillText('Tongue Position', w / 2, 18);
 
         // Subtitle explaining what this chart shows
         ctx.fillStyle = '#64748b';
         ctx.font = '10px Inter, system-ui, sans-serif';
-        ctx.fillText('Articulatory Space (입 안 위치)', w / 2, 32);
+        ctx.fillText('Articulatory Space', w / 2, 32);
 
         // Draw border to distinguish from formant chart
         ctx.strokeStyle = '#f59e0b';  // Amber/orange border
@@ -579,53 +765,53 @@ class DualPlotRenderer {
         const endX = this.artToCanvasX(endArt.x);
         const endY = this.artToCanvasY(endArt.y);
 
-        // Draw start zone (green circle)
+        // Draw start zone (softer green circle - smaller)
         ctx.beginPath();
-        ctx.arc(startX, startY, 25, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
+        ctx.arc(startX, startY, 18, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(52, 211, 153, 0.08)';
         ctx.fill();
-        ctx.strokeStyle = 'rgba(16, 185, 129, 0.6)';
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(52, 211, 153, 0.4)';
+        ctx.lineWidth = 1.5;
         ctx.stroke();
 
-        // Start label
-        ctx.fillStyle = '#10b981';
-        ctx.font = 'bold 11px Inter, system-ui, sans-serif';
+        // Start label (softer)
+        ctx.fillStyle = 'rgba(52, 211, 153, 0.8)';
+        ctx.font = '10px Inter, system-ui, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(this.diphthongStartRef.label || 'Start', startX, startY - 30);
+        ctx.fillText(this.diphthongStartRef.label || 'Start', startX, startY - 24);
 
-        // Draw end zone (red circle)
+        // Draw end zone (softer orange circle - smaller)
         ctx.beginPath();
-        ctx.arc(endX, endY, 25, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
+        ctx.arc(endX, endY, 18, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(251, 146, 60, 0.08)';
         ctx.fill();
-        ctx.strokeStyle = 'rgba(239, 68, 68, 0.6)';
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(251, 146, 60, 0.4)';
+        ctx.lineWidth = 1.5;
         ctx.stroke();
 
-        // End label
-        ctx.fillStyle = '#ef4444';
-        ctx.font = 'bold 11px Inter, system-ui, sans-serif';
-        ctx.fillText(this.diphthongEndRef.label || 'End', endX, endY - 30);
+        // End label (softer)
+        ctx.fillStyle = 'rgba(251, 146, 60, 0.8)';
+        ctx.font = '10px Inter, system-ui, sans-serif';
+        ctx.fillText(this.diphthongEndRef.label || 'End', endX, endY - 24);
 
-        // Draw direction arrow (dashed line with arrow head)
+        // Draw direction arrow (dashed line with arrow head - softer)
         ctx.beginPath();
-        ctx.setLineDash([8, 4]);
-        ctx.strokeStyle = 'rgba(59, 130, 246, 0.5)';
-        ctx.lineWidth = 3;
+        ctx.setLineDash([6, 3]);
+        ctx.strokeStyle = 'rgba(96, 165, 250, 0.35)';
+        ctx.lineWidth = 2;
         ctx.moveTo(startX, startY);
         ctx.lineTo(endX, endY);
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Arrow head
-        this.drawArrow(ctx, startX, startY, endX, endY, 'rgba(59, 130, 246, 0.7)');
+        // Arrow head (softer)
+        this.drawArrow(ctx, startX, startY, endX, endY, 'rgba(96, 165, 250, 0.5)');
 
-        // Direction label in middle
+        // Direction label in middle (softer)
         const midX = (startX + endX) / 2;
-        const midY = (startY + endY) / 2 - 15;
-        ctx.fillStyle = '#3b82f6';
-        ctx.font = 'bold 10px Inter, system-ui, sans-serif';
+        const midY = (startY + endY) / 2 - 12;
+        ctx.fillStyle = 'rgba(96, 165, 250, 0.7)';
+        ctx.font = '9px Inter, system-ui, sans-serif';
         ctx.fillText('Expected Path', midX, midY);
     }
 
@@ -640,7 +826,7 @@ class DualPlotRenderer {
         ctx.lineWidth = 1;
 
         // F1 lines (horizontal)
-        [200, 300, 400, 500, 600, 700, 800, 900].forEach(f1 => {
+        [200, 300, 400, 500, 600, 700, 800, 900, 1000].forEach(f1 => {
             if (f1 < this.f1Range[1] || f1 > this.f1Range[0]) return;
             const y = this.f1ToCanvasY(f1);
             ctx.beginPath();
@@ -755,10 +941,94 @@ class DualPlotRenderer {
         ctx.font = 'bold 10px Inter, system-ui, sans-serif';
         ctx.textAlign = 'center';
 
-        ctx.fillText('FRONT', m.left + w * 0.85, m.top - 5);
-        ctx.fillText('BACK', m.left + w * 0.15, m.top - 5);
+        ctx.fillText('FRONT', m.left + w * 0.15, m.top - 5);
+        ctx.fillText('BACK', m.left + w * 0.85, m.top - 5);
         ctx.fillText('HIGH', m.left - 20, m.top + 15);
         ctx.fillText('LOW', m.left - 20, this.height - m.bottom - 10);
+    }
+
+    /**
+     * Draw vowel quadrangle - lightweight overlay for use with background image
+     * Uses artToCanvas functions for consistent positioning with data points
+     */
+    drawVowelQuadrangle(ctx) {
+        // Use articulatory coordinates (x: 0=front, 1=back; y: 0=low, 1=high)
+        // and convert to canvas using our standard functions
+
+        // Vowel quadrangle vertices (extended to accommodate all vowels)
+        // Front-high (ㅣ): x=0.10, y=0.95
+        const frontHigh = [this.artToCanvasX(0.05), this.artToCanvasY(0.98)];
+        // Back-high (ㅜ): x=0.95, y=0.90
+        const backHigh = [this.artToCanvasX(0.98), this.artToCanvasY(0.95)];
+        // Back-low (near ㅓ area): x=0.85, y=0.05
+        const backLow = [this.artToCanvasX(0.90), this.artToCanvasY(0.02)];
+        // Front-low (ㅏ): x=0.25, y=0.05
+        const frontLow = [this.artToCanvasX(0.20), this.artToCanvasY(0.02)];
+
+        const topLeft = frontHigh;
+        const topRight = backHigh;
+        const bottomRight = backLow;
+        const bottomLeft = frontLow;
+
+        // Draw quadrangle with semi-transparent fill
+        ctx.beginPath();
+        ctx.moveTo(...topLeft);
+        ctx.lineTo(...topRight);
+        ctx.lineTo(...bottomRight);
+        ctx.lineTo(...bottomLeft);
+        ctx.closePath();
+
+        // Light fill
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.06)';  // Softer blue tint
+        ctx.fill();
+
+        // Stroke
+        ctx.strokeStyle = 'rgba(59, 130, 246, 0.4)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Draw internal guide lines
+        ctx.strokeStyle = 'rgba(100, 116, 139, 0.2)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+
+        // Vertical center line (x = 0.5)
+        const centerX = this.artToCanvasX(0.5);
+        ctx.beginPath();
+        ctx.moveTo(centerX, this.artToCanvasY(0.90));
+        ctx.lineTo(centerX, this.artToCanvasY(0.20));
+        ctx.stroke();
+
+        // Horizontal mid line (y = 0.5)
+        const midY = this.artToCanvasY(0.5);
+        ctx.beginPath();
+        ctx.moveTo(this.artToCanvasX(0.15), midY);
+        ctx.lineTo(this.artToCanvasX(0.85), midY);
+        ctx.stroke();
+
+        ctx.setLineDash([]);
+
+        // Corner labels (subtle) - use artToCanvas for positioning
+        ctx.fillStyle = 'rgba(71, 85, 105, 0.6)';
+        ctx.font = '9px Inter, system-ui, sans-serif';
+        ctx.textAlign = 'center';
+
+        // Front/Back labels at top
+        ctx.fillText('Front(전설)', this.artToCanvasX(0.15), this.margin.top - 5);
+        ctx.fillText('Back(후설))', this.artToCanvasX(0.85), this.margin.top - 5);
+
+        // High/Low labels on left side
+        ctx.save();
+        ctx.translate(this.margin.left - 8, this.artToCanvasY(0.85));
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText('High(고)', 0, 0);
+        ctx.restore();
+
+        ctx.save();
+        ctx.translate(this.margin.left - 8, this.artToCanvasY(0.25));
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText('Low(저)', 0, 0);
+        ctx.restore();
     }
 
     // =========================================================================
@@ -784,25 +1054,25 @@ class DualPlotRenderer {
         // 2σ ellipse (outer, faded)
         ctx.beginPath();
         ctx.ellipse(cx, cy, wScale * 2, hScale * 2, 0, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(16, 185, 129, 0.08)';
+        ctx.fillStyle = 'rgba(52, 211, 153, 0.05)';  // Lighter green
         ctx.fill();
-        ctx.strokeStyle = 'rgba(16, 185, 129, 0.3)';
+        ctx.strokeStyle = 'rgba(52, 211, 153, 0.2)';
         ctx.lineWidth = 1;
         ctx.setLineDash([4, 4]);
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // 1.5σ ellipse (valid range, more visible)
+        // 1.5σ ellipse (valid range, softer colors)
         ctx.beginPath();
         ctx.ellipse(cx, cy, wScale * 1.5, hScale * 1.5, 0, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
+        ctx.fillStyle = 'rgba(52, 211, 153, 0.1)';  // Softer green fill
         ctx.fill();
-        ctx.strokeStyle = 'rgba(16, 185, 129, 0.6)';
+        ctx.strokeStyle = 'rgba(52, 211, 153, 0.4)';  // Softer green stroke
         ctx.lineWidth = 2;
         ctx.stroke();
 
-        // Center point
-        this.drawPoint(ctx, cx, cy, 6, '#10b981', 0.8, target.label || 'Target', 10);
+        // Center point (softer green)
+        this.drawPoint(ctx, cx, cy, 6, '#34d399', 0.6, target.label || 'Target', 10);
     }
 
     drawDiphthongRefEllipse(ctx, ref, color, chartType) {
@@ -812,62 +1082,67 @@ class DualPlotRenderer {
             cx = this.f2ToCanvasX(ref.f2);
             cy = this.f1ToCanvasY(ref.f1);
             const scale = this.sdToCanvasScale(ref.f1_sd || 60, ref.f2_sd || 100);
-            wScale = scale.w;
-            hScale = scale.h;
+            wScale = scale.w * 0.7;  // Smaller ellipse
+            hScale = scale.h * 0.7;
         } else {
             const artCoords = this.formantsToArticulatory(ref.f1, ref.f2);
             cx = this.artToCanvasX(artCoords.x);
             cy = this.artToCanvasY(artCoords.y);
-            wScale = 25;
-            hScale = 25;
+            wScale = 18;  // Smaller
+            hScale = 18;
         }
 
-        // 1.5σ ellipse
+        // Parse color and make softer
+        const softerColor = color.replace('#10b981', 'rgba(52, 211, 153,')
+                                 .replace('#ef4444', 'rgba(251, 146, 60,')
+                                 .replace('rgb(', 'rgba(');
+
+        // 1.5σ ellipse (softer, smaller)
         ctx.beginPath();
-        ctx.ellipse(cx, cy, wScale * 1.5, hScale * 1.5, 0, 0, Math.PI * 2);
-        ctx.fillStyle = color.replace(')', ', 0.1)').replace('rgb', 'rgba');
+        ctx.ellipse(cx, cy, wScale * 1.2, hScale * 1.2, 0, 0, Math.PI * 2);
+        ctx.fillStyle = softerColor.includes('rgba') ? softerColor + ' 0.06)' : 'rgba(100, 116, 139, 0.06)';
         ctx.fill();
-        ctx.strokeStyle = color;
-        ctx.globalAlpha = 0.5;
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = softerColor.includes('rgba') ? softerColor + ' 0.35)' : color;
+        ctx.globalAlpha = 0.6;
+        ctx.lineWidth = 1.5;
         ctx.stroke();
         ctx.globalAlpha = 1;
 
-        // Label
-        ctx.fillStyle = color;
-        ctx.font = 'bold 10px Inter, system-ui, sans-serif';
+        // Label (softer)
+        ctx.fillStyle = softerColor.includes('rgba') ? softerColor + ' 0.7)' : color;
+        ctx.font = '9px Inter, system-ui, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(ref.label || '', cx, cy - wScale * 1.5 - 5);
+        ctx.fillText(ref.label || '', cx, cy - wScale * 1.2 - 4);
     }
 
     drawAchievementCircles(ctx, cx, cy) {
         const baseRadius = 30;
 
-        // Outer circle (3σ = 0%)
+        // Outer circle (3σ = 0%) - softer red
         ctx.beginPath();
         ctx.arc(cx, cy, baseRadius * 2, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(239, 68, 68, 0.2)';
+        ctx.strokeStyle = 'rgba(248, 113, 113, 0.15)';  // Softer red
         ctx.lineWidth = 1;
         ctx.stroke();
 
-        // Middle circle (2σ)
+        // Middle circle (2σ) - softer amber
         ctx.beginPath();
         ctx.arc(cx, cy, baseRadius * 1.33, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(245, 158, 11, 0.3)';
+        ctx.strokeStyle = 'rgba(251, 191, 36, 0.2)';  // Softer amber
         ctx.lineWidth = 1;
         ctx.stroke();
 
-        // Inner circle (1.5σ = 100%)
+        // Inner circle (1.5σ = 100%) - softer green
         ctx.beginPath();
         ctx.arc(cx, cy, baseRadius, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
+        ctx.fillStyle = 'rgba(52, 211, 153, 0.1)';  // Softer green
         ctx.fill();
-        ctx.strokeStyle = 'rgba(16, 185, 129, 0.6)';
+        ctx.strokeStyle = 'rgba(52, 211, 153, 0.4)';
         ctx.lineWidth = 2;
         ctx.stroke();
 
-        // Center point
-        this.drawPoint(ctx, cx, cy, 5, '#10b981', 0.8, 'Target', 10);
+        // Center point (softer green)
+        this.drawPoint(ctx, cx, cy, 5, '#34d399', 0.6, 'Target', 10);
     }
 
     drawAchievementBadge(ctx, score) {
@@ -962,38 +1237,38 @@ class DualPlotRenderer {
             y: this.f1ToCanvasY(pt.f1)
         }));
 
-        // Draw smooth curve
-        this.drawSmoothCurve(ctx, canvasPoints, `rgba(59, 130, 246, ${opacity})`, 3);
+        // Draw smooth curve (softer blue)
+        this.drawSmoothCurve(ctx, canvasPoints, `rgba(96, 165, 250, ${opacity * 0.7})`, 3);
 
         // Draw arrow at end
         if (canvasPoints.length >= 2 && (!isAnimating || this.animationProgress > 0.8)) {
             const last = canvasPoints[canvasPoints.length - 1];
             const prev = canvasPoints[canvasPoints.length - 2];
-            this.drawArrow(ctx, prev.x, prev.y, last.x, last.y, `rgba(59, 130, 246, ${opacity})`);
+            this.drawArrow(ctx, prev.x, prev.y, last.x, last.y, `rgba(96, 165, 250, ${opacity * 0.7})`);
         }
 
-        // Start point (green)
+        // Start point (softer green)
         const start = canvasPoints[0];
-        this.drawPoint(ctx, start.x, start.y, 5, '#10b981', opacity, 'Start', 9);
+        this.drawPoint(ctx, start.x, start.y, 5, '#34d399', opacity * 0.7, 'Start', 9);
 
-        // End point (red) - only when animation near complete
+        // End point (softer orange) - only when animation near complete
         if (!isAnimating || this.animationProgress > 0.85) {
             const endOpacity = isFaded ? opacity : opacity * ((this.animationProgress - 0.85) / 0.15);
             const end = canvasPoints[canvasPoints.length - 1];
-            this.drawPoint(ctx, end.x, end.y, 5, '#ef4444', endOpacity, 'End', 9);
+            this.drawPoint(ctx, end.x, end.y, 5, '#fb923c', endOpacity * 0.7, 'End', 9);
         }
 
-        // Moving point during animation
+        // Moving point during animation (softer blue)
         if (isAnimating && visibleCount > 1) {
             const current = canvasPoints[canvasPoints.length - 1];
-            this.drawPoint(ctx, current.x, current.y, 7, '#3b82f6', 0.9);
+            this.drawPoint(ctx, current.x, current.y, 7, '#60a5fa', 0.7);
         }
     }
 
     drawTrajectoryOnArticulatory(ctx, points, isFaded) {
         if (!points || points.length < 2) return;
 
-        const opacity = isFaded ? 0.2 : 0.7;
+        const opacity = isFaded ? 0.15 : 0.6;  // Softer
         const isAnimating = !isFaded && this.animationProgress < 1;
         const visibleCount = isAnimating
             ? Math.max(2, Math.ceil(points.length * this.animationProgress))
@@ -1010,23 +1285,23 @@ class DualPlotRenderer {
             };
         });
 
-        // Draw smooth curve
-        this.drawSmoothCurve(ctx, canvasPoints, `rgba(59, 130, 246, ${opacity})`, 3);
+        // Draw smooth curve (softer blue)
+        this.drawSmoothCurve(ctx, canvasPoints, `rgba(96, 165, 250, ${opacity})`, 3);
 
-        // Start point
-        this.drawPoint(ctx, canvasPoints[0].x, canvasPoints[0].y, 5, '#10b981', opacity);
+        // Start point (softer green)
+        this.drawPoint(ctx, canvasPoints[0].x, canvasPoints[0].y, 5, '#34d399', opacity);
 
-        // End point
+        // End point (softer orange)
         if (!isAnimating || this.animationProgress > 0.85) {
             const endOpacity = isFaded ? opacity : opacity * ((this.animationProgress - 0.85) / 0.15);
             const last = canvasPoints[canvasPoints.length - 1];
-            this.drawPoint(ctx, last.x, last.y, 5, '#ef4444', endOpacity);
+            this.drawPoint(ctx, last.x, last.y, 5, '#fb923c', endOpacity);
         }
 
-        // Moving point
+        // Moving point (softer blue)
         if (isAnimating && canvasPoints.length > 1) {
             const current = canvasPoints[canvasPoints.length - 1];
-            this.drawPoint(ctx, current.x, current.y, 7, '#3b82f6', 0.9);
+            this.drawPoint(ctx, current.x, current.y, 7, '#60a5fa', 0.7);
         }
     }
 
@@ -1109,19 +1384,23 @@ class DualPlotRenderer {
 
     animate() {
         const startTime = performance.now();
+        const duration = this.trajectoryHistory.length > 0
+            ? this.trajectoryAnimationDuration
+            : this.animationDuration;
+
+        console.log('[DualPlotRenderer] Starting animation, duration:', duration, 'ms');
 
         const step = (timestamp) => {
             const elapsed = timestamp - startTime;
-            const duration = this.trajectoryHistory.length > 0
-                ? this.trajectoryAnimationDuration
-                : this.animationDuration;
-
             this.animationProgress = Math.min(1, elapsed / duration);
+
             this.draw();
 
-            if (this.animationProgress < 1) {
+            if (elapsed < duration) {
                 this.animationFrame = requestAnimationFrame(step);
             } else {
+                this.animationProgress = 1;
+                this.draw();
                 console.log('[DualPlotRenderer] Animation complete');
             }
         };

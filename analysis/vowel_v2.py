@@ -88,7 +88,10 @@ STANDARD_FEMALE_FORMANTS = {
 }
 
 # Import gender threshold from config
-from .config import F0_GENDER_THRESHOLD
+try:
+    from .config import F0_GENDER_THRESHOLD
+except ImportError:
+    from config import F0_GENDER_THRESHOLD
 
 
 #####################################
@@ -203,7 +206,10 @@ def analyze_vowel_and_pitch(wav_file_path: str):
         f2_mean = float(np.nanmedian(f2_vals))
         f3_mean = float(np.nanmedian(f3_vals))
 
+        print(f"[analyze_vowel_and_pitch] f0={f0_mean:.1f}, f1={f1_mean:.1f}, f2={f2_mean:.1f}, f3={f3_mean:.1f}")
+
         if any(np.isnan(v) for v in [f0_mean, f1_mean, f2_mean]):
+            print(f"[analyze_vowel_and_pitch] NaN detected - f0_nan={np.isnan(f0_mean)}, f1_nan={np.isnan(f1_mean)}, f2_nan={np.isnan(f2_mean)}")
             return None, None, None, None, "Could not get stable formants. Try a clearer vowel."
 
         quality_hint = " ".join(quality_msgs) if quality_msgs else None
@@ -319,7 +325,15 @@ def analyze_single_audio(
         wav_size = os.path.getsize(tmp_wav)
     except OSError:
         wav_size = -1
-    print(f"[analyze_single_audio] Converted sizes input={original_size}, wav={wav_size}")
+
+    # Check audio duration
+    try:
+        snd = parselmouth.Sound(tmp_wav)
+        audio_duration = snd.get_total_duration()
+    except Exception:
+        audio_duration = -1
+
+    print(f"[analyze_single_audio] Converted sizes input={original_size}, wav={wav_size}, duration={audio_duration:.2f}s")
 
     f1, f2, f3, f0, qhint = analyze_vowel_and_pitch(tmp_wav)
 
@@ -331,9 +345,9 @@ def analyze_single_audio(
 
     if f1 is None or f2 is None or f0 is None:
         msg = qhint or "Could not extract stable formants."
+        print(f"[analyze_single_audio] FAILED: {msg}")
         if return_reason:
             return None, msg
-        print(f"[analyze_single_audio] {msg}")
         return None
 
     gender_guess = "Male" if f0 < F0_GENDER_THRESHOLD else "Female"
@@ -430,11 +444,66 @@ def plot_single_vowel_space(f1, f2, vowel_key, gender_guess, out_path):
 ###############################################
 # 9. Time-series formant extraction for diphthongs
 ###############################################
+def smooth_trajectory(trajectory: list, window_size: int = 3) -> list:
+    """
+    Apply moving average smoothing to formant trajectory.
+
+    Args:
+        trajectory: List of {'time', 'f1', 'f2', 'f3'} dicts
+        window_size: Size of moving average window (default 3)
+
+    Returns:
+        Smoothed trajectory list
+    """
+    if len(trajectory) < window_size:
+        return trajectory
+
+    smoothed = []
+    half_win = window_size // 2
+
+    for i in range(len(trajectory)):
+        start_idx = max(0, i - half_win)
+        end_idx = min(len(trajectory), i + half_win + 1)
+        window = trajectory[start_idx:end_idx]
+
+        smoothed.append({
+            'time': trajectory[i]['time'],
+            'f1': np.mean([p['f1'] for p in window]),
+            'f2': np.mean([p['f2'] for p in window]),
+            'f3': np.mean([p['f3'] for p in window])
+        })
+
+    return smoothed
+
+
+def downsample_trajectory(trajectory: list, target_frames: int = 10) -> list:
+    """
+    Downsample trajectory to target number of frames.
+
+    Args:
+        trajectory: Full trajectory list
+        target_frames: Desired number of output frames
+
+    Returns:
+        Downsampled trajectory
+    """
+    n = len(trajectory)
+    if n <= target_frames:
+        return trajectory
+
+    # Select evenly spaced indices
+    indices = np.linspace(0, n - 1, target_frames, dtype=int)
+    return [trajectory[i] for i in indices]
+
+
 def extract_formant_trajectory(
     wav_file_path: str,
     window_length: float = 0.025,  # 25ms window
-    hop_length: float = 0.010,     # 10ms hop
-    min_frames: int = 5
+    hop_length: float = 0.020,     # 20ms hop (finer resolution for diphthongs)
+    min_frames: int = 3,           # Reduced from 5 to be more lenient
+    smooth: bool = True,
+    smooth_window: int = 3,
+    max_frames: int = 30           # Increased for finer hop + 2-second recordings
 ):
     """
     Extract formant trajectory over time for diphthong analysis.
@@ -442,8 +511,11 @@ def extract_formant_trajectory(
     Args:
         wav_file_path: Path to WAV file
         window_length: Analysis window length in seconds (default 25ms)
-        hop_length: Hop between frames in seconds (default 10ms)
+        hop_length: Hop between frames in seconds (default 50ms for cleaner data)
         min_frames: Minimum number of frames required
+        smooth: Apply moving average smoothing (default True)
+        smooth_window: Smoothing window size (default 3)
+        max_frames: Maximum frames to output (default 15)
 
     Returns:
         dict with:
@@ -481,6 +553,13 @@ def extract_formant_trajectory(
                 'duration': duration
             }
 
+        # Extract formants once for the entire sound (more efficient)
+        formants = sound.to_formant_burg(
+            time_step=hop_length,
+            max_number_of_formants=5,
+            maximum_formant=5500
+        )
+
         # Generate time points
         num_frames = int((duration - window_length) / hop_length) + 1
 
@@ -497,31 +576,21 @@ def extract_formant_trajectory(
         for i in range(num_frames):
             t_center = window_length / 2 + i * hop_length
 
-            # Extract window
-            t_start = max(0, t_center - window_length / 2)
-            t_end = min(duration, t_center + window_length / 2)
-
             try:
-                # Extract formants at this time point
-                formants = sound.to_formant_burg(
-                    time_step=hop_length,
-                    max_number_of_formants=5,
-                    maximum_formant=5500
-                )
-
                 f1 = formants.get_value_at_time(1, t_center)
                 f2 = formants.get_value_at_time(2, t_center)
                 f3 = formants.get_value_at_time(3, t_center)
 
-                # Filter out NaN/undefined values
-                if f1 and not np.isnan(f1) and f2 and not np.isnan(f2):
+                # Filter out NaN/undefined values and unrealistic values
+                if (f1 and not np.isnan(f1) and f2 and not np.isnan(f2) and
+                    150 < f1 < 1200 and 400 < f2 < 3500):  # Realistic formant ranges
                     trajectory.append({
                         'time': t_center,
                         'f1': float(f1),
                         'f2': float(f2),
                         'f3': float(f3) if f3 and not np.isnan(f3) else 2500.0
                     })
-            except Exception as e:
+            except Exception:
                 # Skip problematic frames
                 continue
 
@@ -532,6 +601,14 @@ def extract_formant_trajectory(
                 'trajectory': [],
                 'duration': duration
             }
+
+        # Apply smoothing to reduce noise
+        if smooth and len(trajectory) >= smooth_window:
+            trajectory = smooth_trajectory(trajectory, smooth_window)
+
+        # Downsample if too many frames
+        if len(trajectory) > max_frames:
+            trajectory = downsample_trajectory(trajectory, max_frames)
 
         return {
             'success': True,
@@ -550,13 +627,177 @@ def extract_formant_trajectory(
         }
 
 
+###############################################
+# 10. DTW (Dynamic Time Warping) for trajectory comparison
+###############################################
+def compute_dtw_distance(trajectory: list, ref_trajectory: list) -> float:
+    """
+    Compute DTW distance between user trajectory and reference trajectory.
+
+    Uses normalized F1/F2 space to make distances comparable.
+
+    Args:
+        trajectory: User's trajectory list [{'time', 'f1', 'f2', ...}]
+        ref_trajectory: Reference trajectory list [{'f1', 'f2'}]
+
+    Returns:
+        Normalized DTW distance (lower = more similar)
+    """
+    if not trajectory or not ref_trajectory:
+        return float('inf')
+
+    # Extract F1, F2 and normalize
+    user_f1 = np.array([f['f1'] for f in trajectory])
+    user_f2 = np.array([f['f2'] for f in trajectory])
+    ref_f1 = np.array([f['f1'] for f in ref_trajectory])
+    ref_f2 = np.array([f['f2'] for f in ref_trajectory])
+
+    # Normalize to [0, 1] range for fair comparison
+    # Using typical formant ranges: F1: 200-1000, F2: 500-2800
+    user_f1_norm = (user_f1 - 200) / 800
+    user_f2_norm = (user_f2 - 500) / 2300
+    ref_f1_norm = (ref_f1 - 200) / 800
+    ref_f2_norm = (ref_f2 - 500) / 2300
+
+    n = len(user_f1_norm)
+    m = len(ref_f1_norm)
+
+    # DTW cost matrix
+    dtw_matrix = np.full((n + 1, m + 1), np.inf)
+    dtw_matrix[0, 0] = 0
+
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            # Euclidean distance in normalized F1-F2 space
+            cost = np.sqrt(
+                (user_f1_norm[i-1] - ref_f1_norm[j-1])**2 +
+                (user_f2_norm[i-1] - ref_f2_norm[j-1])**2
+            )
+            dtw_matrix[i, j] = cost + min(
+                dtw_matrix[i-1, j],      # insertion
+                dtw_matrix[i, j-1],      # deletion
+                dtw_matrix[i-1, j-1]     # match
+            )
+
+    # Normalize by path length
+    dtw_distance = dtw_matrix[n, m] / (n + m)
+    return dtw_distance
+
+
+def generate_reference_trajectory(start_ref: dict, end_ref: dict, num_points: int = 10) -> list:
+    """
+    Generate an ideal reference trajectory from start to end vowel.
+
+    Creates a linear interpolation (ideal smooth glide) between
+    start and end formant positions.
+
+    Args:
+        start_ref: Reference dict with 'f1', 'f2' for starting vowel
+        end_ref: Reference dict with 'f1', 'f2' for ending vowel
+        num_points: Number of points in trajectory
+
+    Returns:
+        List of {'f1', 'f2'} dicts representing ideal trajectory
+    """
+    trajectory = []
+    for i in range(num_points):
+        t = i / (num_points - 1)  # 0 to 1
+        trajectory.append({
+            'f1': start_ref['f1'] + t * (end_ref['f1'] - start_ref['f1']),
+            'f2': start_ref['f2'] + t * (end_ref['f2'] - start_ref['f2'])
+        })
+    return trajectory
+
+
+def compute_dtw_score(trajectory: list, start_ref: dict, end_ref: dict) -> tuple:
+    """
+    Compute DTW-based trajectory similarity score.
+
+    Args:
+        trajectory: User's formant trajectory
+        start_ref: Reference formants for start vowel
+        end_ref: Reference formants for end vowel
+
+    Returns:
+        (score, dtw_distance): Score 0-100 and raw DTW distance
+    """
+    # Generate ideal reference trajectory
+    ref_trajectory = generate_reference_trajectory(start_ref, end_ref, num_points=10)
+
+    # Compute DTW distance
+    dtw_dist = compute_dtw_distance(trajectory, ref_trajectory)
+
+    # Convert distance to score
+    # DTW distance thresholds (empirically determined):
+    # < 0.05: excellent (100)
+    # 0.05-0.15: linear decrease
+    # > 0.15: poor (0)
+    if dtw_dist <= 0.05:
+        score = 100
+    elif dtw_dist >= 0.15:
+        score = 0
+    else:
+        score = 100 * (0.15 - dtw_dist) / 0.10
+
+    return score, dtw_dist
+
+
+def compute_sigma_score(measured_f1, measured_f2, ref_f1, ref_f2, ref_f1_sd, ref_f2_sd):
+    """
+    Compute sigma-based score for a single point.
+
+    Uses z-score (standard deviations from target) to calculate score:
+    - Within 1.5σ: 100 points (excellent)
+    - 1.5σ to 3σ: Linear decrease from 100 to 0
+    - Beyond 3σ: 0 points
+
+    Args:
+        measured_f1, measured_f2: User's formant values
+        ref_f1, ref_f2: Reference target formant values
+        ref_f1_sd, ref_f2_sd: Reference standard deviations
+
+    Returns:
+        Score (0-100) and z-scores tuple
+    """
+    # Calculate z-scores for each formant
+    z1 = abs(measured_f1 - ref_f1) / max(ref_f1_sd, 1)
+    z2 = abs(measured_f2 - ref_f2) / max(ref_f2_sd, 1)
+
+    # Combined z-score (average of F1 and F2 z-scores)
+    z_avg = (z1 + z2) / 2
+
+    # Score mapping:
+    # z <= 1.5σ: 100 points
+    # 1.5σ < z < 3σ: linear decrease
+    # z >= 3σ: 0 points
+    if z_avg <= 1.5:
+        score = 100
+    elif z_avg >= 3.0:
+        score = 0
+    else:
+        # Linear interpolation between 1.5σ (100) and 3σ (0)
+        score = 100 * (3.0 - z_avg) / 1.5
+
+    return score, z1, z2, z_avg
+
+
 def score_diphthong_trajectory(
     trajectory: list,
     vowel_key: str,
     ref_table: dict
 ):
     """
-    Score a diphthong trajectory based on start/end positions and direction.
+    Score a diphthong trajectory using sigma-based scoring.
+
+    Evaluates:
+    1. Start position (first 30%): How close to starting vowel target
+    2. End position (last 30%): How close to ending vowel target
+    3. Direction: Cosine similarity of movement vector
+
+    Sigma scoring rules:
+    - Within 1.5σ: 100% score for that component
+    - 1.5σ to 3σ: Linear decrease
+    - Beyond 3σ: 0%
 
     Args:
         trajectory: List of {'time', 'f1', 'f2', 'f3'} from extract_formant_trajectory()
@@ -566,18 +807,21 @@ def score_diphthong_trajectory(
     Returns:
         dict with:
             'score': Overall score (0-100)
-            'start_score': Starting position score
-            'end_score': Ending position score
+            'start_score': Starting position score (sigma-based)
+            'end_score': Ending position score (sigma-based)
             'direction_score': Movement direction score
             'feedback': List of feedback strings
-            'details': Additional metrics
+            'details': Additional metrics including sigma values
 
     Example:
         >>> result = extract_formant_trajectory('wa.wav')
         >>> score_result = score_diphthong_trajectory(result['trajectory'], 'wa (와)', ref_table)
-        >>> print(f"Score: {score_result['score']}")
+        >>> print(f"Score: {score_result['score']}, Start σ: {score_result['details']['start_sigma']}")
     """
-    from config import DIPHTHONG_TRAJECTORIES, VOWEL_ARTICULATORY_MAP
+    try:
+        from .config import DIPHTHONG_TRAJECTORIES
+    except ImportError:
+        from config import DIPHTHONG_TRAJECTORIES
 
     if vowel_key not in DIPHTHONG_TRAJECTORIES:
         # Fallback: treat as monophthong (use middle frames)
@@ -616,30 +860,58 @@ def score_diphthong_trajectory(
             'details': {}
         }
 
-    # Extract start and end portions (first/last 30%)
+    # Extract start and end portions using TIME-BASED split (not frame-based)
+    # First/last 30% of actual duration, not frame count
     n = len(trajectory)
-    start_portion = trajectory[:max(1, n//3)]
-    end_portion = trajectory[max(1, 2*n//3):]
+    if n < 2:
+        return {
+            'score': 50,
+            'error': 'Too few frames for trajectory analysis',
+            'feedback': ['Not enough data for diphthong analysis'],
+            'details': {}
+        }
 
-    # Average formants for start and end
-    start_f1 = np.mean([f['f1'] for f in start_portion])
-    start_f2 = np.mean([f['f2'] for f in start_portion])
-    end_f1 = np.mean([f['f1'] for f in end_portion])
-    end_f2 = np.mean([f['f2'] for f in end_portion])
+    total_duration = trajectory[-1]['time'] - trajectory[0]['time']
+    t_start = trajectory[0]['time']
+    t_30 = t_start + total_duration * 0.30  # First 30% boundary
+    t_70 = t_start + total_duration * 0.70  # Last 30% boundary
 
-    # Score start position
+    start_portion = [f for f in trajectory if f['time'] <= t_30]
+    end_portion = [f for f in trajectory if f['time'] >= t_70]
+
+    # Ensure at least one frame in each portion
+    if not start_portion:
+        start_portion = trajectory[:1]
+    if not end_portion:
+        end_portion = trajectory[-1:]
+
+    # Use MEDIAN for robustness against outliers (not mean)
+    start_f1 = np.median([f['f1'] for f in start_portion])
+    start_f2 = np.median([f['f2'] for f in start_portion])
+    end_f1 = np.median([f['f1'] for f in end_portion])
+    end_f2 = np.median([f['f2'] for f in end_portion])
+
+    # Get reference values
     start_ref = ref_table[start_vowel_key]
-    start_z1 = abs(start_f1 - start_ref['f1']) / start_ref['f1_sd']
-    start_z2 = abs(start_f2 - start_ref['f2']) / start_ref['f2_sd']
-    start_score = max(0, 100 - 10 * (start_z1 + start_z2))
-
-    # Score end position
     end_ref = ref_table[end_vowel_key]
-    end_z1 = abs(end_f1 - end_ref['f1']) / end_ref['f1_sd']
-    end_z2 = abs(end_f2 - end_ref['f2']) / end_ref['f2_sd']
-    end_score = max(0, 100 - 10 * (end_z1 + end_z2))
 
-    # Score direction (cosine similarity)
+    # === SIGMA-BASED SCORING ===
+
+    # Score start position using sigma scoring
+    start_score, start_z1, start_z2, start_sigma = compute_sigma_score(
+        start_f1, start_f2,
+        start_ref['f1'], start_ref['f2'],
+        start_ref['f1_sd'], start_ref['f2_sd']
+    )
+
+    # Score end position using sigma scoring
+    end_score, end_z1, end_z2, end_sigma = compute_sigma_score(
+        end_f1, end_f2,
+        end_ref['f1'], end_ref['f2'],
+        end_ref['f1_sd'], end_ref['f2_sd']
+    )
+
+    # Score direction (cosine similarity of movement vectors)
     user_vector = np.array([end_f2 - start_f2, end_f1 - start_f1])
     target_vector = np.array([
         end_ref['f2'] - start_ref['f2'],
@@ -656,28 +928,101 @@ def score_diphthong_trajectory(
     else:
         direction_score = 0
 
+    # === TRANSITION MAGNITUDE CHECK ===
+    # Check if user actually moved their tongue (not holding static position)
+    # If movement is too small compared to expected, penalize
+    magnitude_ratio = user_norm / max(target_norm, 1)  # Avoid division by zero
+
+    # Magnitude scoring:
+    # ratio >= 0.7: 100% (good movement)
+    # ratio 0.3-0.7: linear scale
+    # ratio < 0.3: heavily penalized (barely moved)
+    if magnitude_ratio >= 0.7:
+        magnitude_score = 100
+    elif magnitude_ratio >= 0.3:
+        magnitude_score = (magnitude_ratio - 0.3) / 0.4 * 100  # Linear 0-100
+    else:
+        magnitude_score = magnitude_ratio / 0.3 * 30  # Max 30 if barely moved
+
+    # Check if user moved TOO much (overshooting)
+    if magnitude_ratio > 1.5:
+        overshoot_penalty = min((magnitude_ratio - 1.5) * 20, 30)  # Max 30 penalty
+        magnitude_score = max(0, magnitude_score - overshoot_penalty)
+
+    # === DTW TRAJECTORY SCORING ===
+    # Compare entire trajectory shape against ideal reference
+    dtw_score, dtw_distance = compute_dtw_score(trajectory, start_ref, end_ref)
+
     # Overall score (weighted average)
-    overall_score = (start_score * 0.35 + end_score * 0.35 + direction_score * 0.30)
+    # Start: 25%, End: 25%, Direction: 20%, Magnitude: 15%, DTW: 15%
+    overall_score = (
+        start_score * 0.25 +
+        end_score * 0.25 +
+        direction_score * 0.20 +
+        magnitude_score * 0.15 +
+        dtw_score * 0.15
+    )
 
-    # Generate feedback
+    # Generate feedback with sigma information (English - Korean order)
     feedback = []
-    if start_score < 70:
-        feedback.append(f"Starting position deviates from '{start_vowel_key}'")
-    if end_score < 70:
-        feedback.append(f"Ending position deviates from '{end_vowel_key}'")
-    if direction_score < 60:
-        feedback.append(f"Movement direction differs from expected '{diphthong_def['direction']}'")
 
+    # Start position feedback
+    if start_sigma <= 1.5:
+        feedback.append(f"Start position excellent ({start_sigma:.1f}σ) - 시작 위치 우수")
+    elif start_sigma <= 2.5:
+        feedback.append(f"Start position good ({start_sigma:.1f}σ) - 시작 위치 양호")
+    else:
+        if start_z1 > start_z2:
+            feedback.append(f"Adjust tongue height at start ({start_sigma:.1f}σ) - 시작 시 혀 높이 조절 필요")
+        else:
+            feedback.append(f"Adjust tongue position at start ({start_sigma:.1f}σ) - 시작 시 혀 위치 조절 필요")
+
+    # End position feedback
+    if end_sigma <= 1.5:
+        feedback.append(f"End position excellent ({end_sigma:.1f}σ) - 끝 위치 우수")
+    elif end_sigma <= 2.5:
+        feedback.append(f"End position good ({end_sigma:.1f}σ) - 끝 위치 양호")
+    else:
+        if end_z1 > end_z2:
+            feedback.append(f"Adjust tongue height at end ({end_sigma:.1f}σ) - 끝 위치에서 혀 높이 조절 필요")
+        else:
+            feedback.append(f"Adjust tongue position at end ({end_sigma:.1f}σ) - 끝 위치에서 혀 위치 조절 필요")
+
+    # Direction feedback
+    if direction_score < 60:
+        feedback.append(f"Movement direction differs from '{diphthong_def['direction']}' - 움직임 방향이 다름")
+
+    # Magnitude feedback
+    if magnitude_ratio < 0.3:
+        feedback.append("Tongue barely moved - hold the vowel and glide smoothly")
+    elif magnitude_ratio < 0.5:
+        feedback.append("Movement too small - exaggerate the tongue glide more")
+    elif magnitude_ratio > 1.8:
+        feedback.append("Movement too large - smoother, smaller glide needed")
+
+    # DTW trajectory feedback
+    if dtw_score >= 85:
+        pass  # Trajectory shape is good, no feedback needed
+    elif dtw_score >= 60:
+        feedback.append("Trajectory shape slightly off - practice smoother glide")
+    else:
+        feedback.append("Trajectory shape differs from ideal - work on smooth transition")
+
+    # Overall assessment
     if overall_score >= 85:
-        feedback.insert(0, "Excellent diphthong trajectory!")
+        feedback.insert(0, "Excellent diphthong pronunciation! - 이중모음 발음 우수!")
     elif overall_score >= 70:
-        feedback.insert(0, "Good trajectory, minor adjustments needed")
+        feedback.insert(0, "Good pronunciation, minor adjustments needed - 좋은 발음, 약간의 조정 필요")
+    elif overall_score >= 50:
+        feedback.insert(0, "More practice needed - 연습이 더 필요합니다")
 
     return {
         'score': round(overall_score, 1),
         'start_score': round(start_score, 1),
         'end_score': round(end_score, 1),
         'direction_score': round(direction_score, 1),
+        'magnitude_score': round(magnitude_score, 1),
+        'dtw_score': round(dtw_score, 1),
         'feedback': feedback,
         'details': {
             'start': {'f1': start_f1, 'f2': start_f2},
@@ -685,6 +1030,17 @@ def score_diphthong_trajectory(
             'start_ref': start_vowel_key,
             'end_ref': end_vowel_key,
             'is_diphthong': True,
-            'num_frames': n
+            'num_frames': n,
+            # Sigma values for detailed analysis
+            'start_sigma': round(start_sigma, 2),
+            'end_sigma': round(end_sigma, 2),
+            'start_z_scores': {'f1': round(start_z1, 2), 'f2': round(start_z2, 2)},
+            'end_z_scores': {'f1': round(end_z1, 2), 'f2': round(end_z2, 2)},
+            # Magnitude info
+            'magnitude_ratio': round(magnitude_ratio, 2),
+            'user_movement': round(user_norm, 1),
+            'expected_movement': round(target_norm, 1),
+            # DTW info
+            'dtw_distance': round(dtw_distance, 4),
         }
     }
