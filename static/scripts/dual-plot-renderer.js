@@ -34,9 +34,9 @@ class DualPlotRenderer {
         // Formant space ranges (Hz) - inverted for chart display
         // Extended range to accommodate all Korean vowels including ㅏ (F1 ~1000Hz)
         // Formant ranges - expanded to accommodate more vowel variations
-        // F1: 200-1100 Hz covers all Korean vowels including outliers
+        // F1: 200-1500 Hz covers all Korean vowels including outliers
         // F2: 500-3200 Hz covers front vowels like ㅣ
-        this.f1Range = [1100, 200];  // High to low (inverted Y axis for phonetic convention)
+        this.f1Range = [1500, 200];  // High to low (inverted Y axis for phonetic convention)
         this.f2Range = [3200, 500];  // High to low (inverted X axis for phonetic convention)
 
         // Articulatory space ranges (matches backend VOWEL_ARTICULATORY_MAP)
@@ -872,81 +872,6 @@ class DualPlotRenderer {
         ctx.fillText('F2 (Hz)', this.width / 2, this.height - 5);
     }
 
-    drawTrapezoid(ctx) {
-        const m = this.margin;
-        const w = this.width - m.left - m.right;
-        const h = this.height - m.top - m.bottom;
-
-        // Korean vowel chart trapezoid (모음 사각도)
-        // Based on standard Korean phonetics diagram (두피디아 스타일)
-        // Shape: narrower at top (high vowels), wider at bottom (low vowels)
-        //
-        //     ㅣ[i]─────────────ㅡ[eu]───────ㅜ[u]  (HIGH)
-        //       \                  |           /
-        //        \              ㅓ[eo]       /
-        //      ㅔ[e]              |        ㅗ[o]
-        //          \             |        /
-        //           ㅐ[ae]       |       /
-        //               \        |      /
-        //                 ──────ㅏ[a]──    (LOW)
-
-        // Vertices matching Korean vowel quadrilateral
-        const topLeft = [m.left + w * 0.15, m.top + h * 0.08];   // Front-high (ㅣ area)
-        const topRight = [m.left + w * 0.85, m.top + h * 0.08];  // Back-high (ㅜ area)
-        const bottomRight = [m.left + w * 0.70, this.height - m.bottom - 10]; // Back-low
-        const bottomLeft = [m.left + w * 0.30, this.height - m.bottom - 10];  // Front-low (ㅏ area)
-
-        // Fill with gradient for depth
-        const gradient = ctx.createLinearGradient(0, m.top, 0, this.height - m.bottom);
-        gradient.addColorStop(0, '#f8fafc');   // Light at top (high)
-        gradient.addColorStop(1, '#e2e8f0');   // Slightly darker at bottom (low)
-
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.moveTo(...topLeft);
-        ctx.lineTo(...topRight);
-        ctx.lineTo(...bottomRight);
-        ctx.lineTo(...bottomLeft);
-        ctx.closePath();
-        ctx.fill();
-
-        // Stroke
-        ctx.strokeStyle = '#94a3b8';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        // Draw internal guide lines (like the Korean vowel chart)
-        ctx.strokeStyle = '#cbd5e1';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([4, 4]);
-
-        // Vertical center line (central vowels: ㅡ, ㅓ, ㅏ)
-        const centerX = m.left + w * 0.5;
-        ctx.beginPath();
-        ctx.moveTo(centerX, m.top + h * 0.1);
-        ctx.lineTo(centerX, this.height - m.bottom - 15);
-        ctx.stroke();
-
-        // Horizontal mid line (mid vowels)
-        const midY = m.top + h * 0.5;
-        ctx.beginPath();
-        ctx.moveTo(m.left + w * 0.2, midY);
-        ctx.lineTo(m.left + w * 0.8, midY);
-        ctx.stroke();
-
-        ctx.setLineDash([]);
-
-        // Labels
-        ctx.fillStyle = '#64748b';
-        ctx.font = 'bold 10px Inter, system-ui, sans-serif';
-        ctx.textAlign = 'center';
-
-        ctx.fillText('FRONT', m.left + w * 0.15, m.top - 5);
-        ctx.fillText('BACK', m.left + w * 0.85, m.top - 5);
-        ctx.fillText('HIGH', m.left - 20, m.top + 15);
-        ctx.fillText('LOW', m.left - 20, this.height - m.bottom - 10);
-    }
-
     /**
      * Draw vowel quadrangle - lightweight overlay for use with background image
      * Uses artToCanvas functions for consistent positioning with data points
@@ -1014,20 +939,20 @@ class DualPlotRenderer {
         ctx.textAlign = 'center';
 
         // Front/Back labels at top
-        ctx.fillText('Front(전설)', this.artToCanvasX(0.15), this.margin.top - 5);
-        ctx.fillText('Back(후설))', this.artToCanvasX(0.85), this.margin.top - 5);
+        ctx.fillText('Front', this.artToCanvasX(0.15), this.margin.top - 5);
+        ctx.fillText('Back', this.artToCanvasX(0.85), this.margin.top - 5);
 
         // High/Low labels on left side
         ctx.save();
         ctx.translate(this.margin.left - 8, this.artToCanvasY(0.85));
         ctx.rotate(-Math.PI / 2);
-        ctx.fillText('High(고)', 0, 0);
+        ctx.fillText('High', 0, 0);
         ctx.restore();
 
         ctx.save();
         ctx.translate(this.margin.left - 8, this.artToCanvasY(0.25));
         ctx.rotate(-Math.PI / 2);
-        ctx.fillText('Low(저)', 0, 0);
+        ctx.fillText('Low', 0, 0);
         ctx.restore();
     }
 
