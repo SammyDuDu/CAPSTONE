@@ -17,6 +17,7 @@ Usage:
 
 from contextlib import contextmanager
 from psycopg2 import connect
+import bcrypt
 from config import DB_URL
 
 
@@ -58,16 +59,19 @@ def create_user(username: str, password: str) -> None:
 
     Args:
         username: Unique username
-        password: User password (should be hashed in production)
+        password: User password (will be hashed with bcrypt)
 
     Raises:
         psycopg2.IntegrityError: If username already exists
     """
+    # Hash password with bcrypt
+    hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO users (username, password) VALUES (%s, %s)",
-                (username, password)
+                (username, hashed.decode('utf-8'))
             )
             conn.commit()
 
@@ -86,10 +90,19 @@ def get_user_by_credentials(username: str, password: str) -> tuple | None:
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, username FROM users WHERE username = %s AND password = %s",
-                (username, password)
+                "SELECT id, username, password FROM users WHERE username = %s",
+                (username,)
             )
-            return cur.fetchone()
+            row = cur.fetchone()
+            if row is None:
+                return None
+
+            user_id, db_username, hashed_password = row
+
+            # Verify password with bcrypt
+            if bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8')):
+                return (user_id, db_username)
+            return None
 
 
 def update_user_password(username: str, new_password: str) -> bool:
@@ -98,16 +111,19 @@ def update_user_password(username: str, new_password: str) -> bool:
 
     Args:
         username: User's username
-        new_password: New password to set
+        new_password: New password to set (will be hashed with bcrypt)
 
     Returns:
         True if user was found and updated, False otherwise
     """
+    # Hash new password with bcrypt
+    hashed = bcrypt.hashpw(new_password.encode('utf-8'), bcrypt.gensalt())
+
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE users SET password = %s WHERE username = %s",
-                (new_password, username)
+                (hashed.decode('utf-8'), username)
             )
             updated = cur.rowcount > 0
             conn.commit()
