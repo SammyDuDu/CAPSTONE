@@ -233,13 +233,4 @@ Organized API endpoints:
 
 - Microphone requires HTTPS - use production deployment for full functionality
 - SSL certificates auto-renew via Certbot (90-day validity)
-- Set specific CORS origins in `main.py` (replace `"*"`)
-- Implement password hashing (bcrypt/argon2) in `database.py`
 - Add plot cleanup cron job for `/static/images/analysis/`
-
-## Documentation
-
-- [Engine Analysis Details](ENGINE_ANALYSIS.md) – Detailed scoring algorithms
-- [Full Documentation](DOCUMENTATION.md) – Complete system documentation
-- [Roadmap](ROADMAP.md) – Future development plans
-- [Analysis Engine README](analysis/README.md) – Vowel/consonant engine details
