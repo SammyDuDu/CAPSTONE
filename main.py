@@ -61,10 +61,14 @@ app = FastAPI(
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["*"])
 
 # CORS middleware for cross-origin requests
-# Configure for production: replace "*" with specific origins
+# Restricted to production domain for security
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],        # TODO: Restrict in production
+    allow_origins=[
+        "https://www.kospatest.duckdns.org",
+        "https://kospatest.duckdns.org",
+        "http://localhost:8000",  # Local development
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

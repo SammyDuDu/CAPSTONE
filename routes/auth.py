@@ -106,9 +106,9 @@ async def auth_login(creds: AuthCredentials):
     user_id = user[0]
     username = user[1]
 
-    # Check calibration status (need all 5 vowels: a, i, u, eo, e)
+    # Check calibration status (need 2 extreme vowels: i, u)
     cal_count = get_calibration_count(user_id)
-    calibration_complete = (cal_count >= 5)
+    calibration_complete = (cal_count >= 2)
 
     return {
         "ok": True,
