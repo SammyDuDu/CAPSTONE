@@ -1,77 +1,101 @@
 {% extends 'base.html' %}
 {% block content %}
-    <div class="desc-box">
-        <div class="desc-title"><span id="soundSymbol">{{ sound }}</span></div>
-        <div class="desc-text" id="descText">
-            {{ description if description is defined else 'Write the pronunciation tips for this sound here.' }}
+<div class="desc-box">
+    <div class="desc-title"><span id="soundSymbol">{{ sound }}</span></div>
+    <div class="desc-text" id="descText">
+        {{ description if description is defined else 'Write the pronunciation tips for this sound here.' }}
+    </div>
+</div>
+
+<button class="record-btn" id="recordBtn" aria-pressed="false" title="Record 2 seconds">Record</button>
+
+<div class="analysis-status" id="analysisStatus"></div>
+<div class="analysis-feedback" id="analysisFeedback"></div>
+
+<div class="cards">
+    <div class="card" data-feature="tongue-height">
+        <div class="img-ph"></div>
+        <div class="card-title">Tongue Height</div>
+        <div class="card-body">--</div>
+    </div>
+    <div class="card" data-feature="tongue-backness">
+        <div class="img-ph"></div>
+        <div class="card-title">Tongue Position</div>
+        <div class="card-body">--</div>
+    </div>
+    <div class="card" data-feature="lips-roundness">
+        <div class="img-ph"></div>
+        <div class="card-title">Lips Roundness</div>
+        <div class="card-body">--</div>
+    </div>
+    <div class="card" data-feature="breathiness">
+        <div class="img-ph"></div>
+        <div class="card-title">Recording Quality</div>
+        <div class="card-body">--</div>
+    </div>
+    <div class="card" data-feature="tension">
+        <div class="img-ph"></div>
+        <div class="card-title">Voice Analysis</div>
+        <div class="card-body">--</div>
+    </div>
+    <div class="card total" data-feature="total">
+        <div class="card-title">Total</div>
+        <div class="percent"></div>
+        <div class="card-body">--</div>
+        <div class="score-progress-bar">
+            <div class="score-progress-fill" id="scoreProgressFill" style="width: 0%"></div>
         </div>
     </div>
+</div>
 
-    <button class="record-btn" id="recordBtn" aria-pressed="false" title="Record 2 seconds">Record</button>
-
-    <div class="analysis-status" id="analysisStatus"></div>
-    <div class="analysis-feedback" id="analysisFeedback"></div>
-
-    <div class="cards">
-        <div class="card" data-feature="tongue-height">
-            <div class="img-ph"></div>
-            <div class="card-title">Tongue Height</div>
-            <div class="card-body">--</div>
+<div class="analysis-plot-container" id="analysisPlot" hidden>
+    <div class="dual-plot-wrapper">
+        <div class="plot-panel">
+            <canvas id="formantCanvas"></canvas>
         </div>
-        <div class="card" data-feature="tongue-backness">
-            <div class="img-ph"></div>
-            <div class="card-title">Tongue Position</div>
-            <div class="card-body">--</div>
-        </div>
-        <div class="card" data-feature="lips-roundness">
-            <div class="img-ph"></div>
-            <div class="card-title">Lips Roundness</div>
-            <div class="card-body">--</div>
-        </div>
-        <div class="card" data-feature="breathiness">
-            <div class="img-ph"></div>
-            <div class="card-title">Recording Quality</div>
-            <div class="card-body">--</div>
-        </div>
-        <div class="card" data-feature="tension">
-            <div class="img-ph"></div>
-            <div class="card-title">Voice Analysis</div>
-            <div class="card-body">--</div>
-        </div>
-        <div class="card total" data-feature="total">
-            <div class="card-title">Total</div>
-            <div class="percent"></div>
-            <div class="card-body">--</div>
-            <div class="score-progress-bar">
-                <div class="score-progress-fill" id="scoreProgressFill" style="width: 0%"></div>
-            </div>
+        <div class="plot-panel">
+            <canvas id="articulatoryCanvas"></canvas>
         </div>
     </div>
+    <div class="analysis-plot-caption" id="analysisPlotCaption"></div>
+</div>
 
-    <div class="analysis-plot-container" id="analysisPlot" hidden>
-        <div class="dual-plot-wrapper">
-            <div class="plot-panel">
-                <canvas id="formantCanvas"></canvas>
-            </div>
-            <div class="plot-panel">
-                <canvas id="articulatoryCanvas"></canvas>
-            </div>
+<!-- Consonant dual plot (stop consonants: ㄱ/ㄲ/ㅋ, ㄷ/ㄸ/ㅌ, ㅂ/ㅃ/ㅍ) -->
+<div class="analysis-plot-container" id="consonantPlot" hidden>
+    <div class="dual-plot-wrapper">
+        <div class="plot-panel">
+            <canvas id="placeCanvas"></canvas>
         </div>
-        <div class="analysis-plot-caption" id="analysisPlotCaption"></div>
+        <div class="plot-panel">
+            <canvas id="votCanvas"></canvas>
+        </div>
     </div>
+    <div class="analysis-plot-caption" id="consonantPlotCaption"></div>
+</div>
 
-    <script src="{{ url_for('static', path='scripts/dual-plot-renderer.js') }}"></script>
-    <script src="{{ url_for('static', path='scripts/sound.js') }}"></script>
-    <script>
-        (function () {
-            // Read sound from query string and store it
-            const params = new URLSearchParams(window.location.search);
-            const s = params.get('s');
-            if (s) {
-                localStorage.setItem('selectedSound', s);
-                const el = document.getElementById('soundSymbol');
-                if (el) el.textContent = s;
-            }
-        })();
-    </script>
+<!-- Consonant single plot (fricative: ㅅ/ㅆ/ㅎ, affricate: ㅈ/ㅊ/ㅉ) -->
+<div class="analysis-plot-container" id="singleConsonantPlot" hidden>
+    <div class="single-plot-wrapper">
+        <div class="plot-panel plot-panel-full">
+            <canvas id="spectralCanvas"></canvas>
+        </div>
+    </div>
+    <div class="analysis-plot-caption" id="singleConsonantPlotCaption"></div>
+</div>
+
+<script src="{{ url_for('static', path='scripts/dual-plot-renderer.js') }}"></script>
+<script src="{{ url_for('static', path='scripts/consonant-plot-renderer.js') }}"></script>
+<script src="{{ url_for('static', path='scripts/sound.js') }}"></script>
+<script>
+    (function () {
+        // Read sound from query string and store it
+        const params = new URLSearchParams(window.location.search);
+        const s = params.get('s');
+        if (s) {
+            localStorage.setItem('selectedSound', s);
+            const el = document.getElementById('soundSymbol');
+            if (el) el.textContent = s;
+        }
+    })();
+</script>
 {% endblock %}

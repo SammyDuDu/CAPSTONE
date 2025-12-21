@@ -5,18 +5,18 @@
     --color-primary-dark: #4f46e5;
     --color-primary-light: #818cf8;
     --color-primary-glow: rgba(99, 102, 241, 0.3);
-    
+
     /* Secondary/Accent - Warm Amber */
     --color-accent: #f59e0b;
     --color-accent-dark: #d97706;
     --color-accent-light: #fbbf24;
-    
+
     /* Status Colors */
     --color-success: #10b981;
     --color-success-light: #34d399;
     --color-error: #ef4444;
     --color-warning: #f59e0b;
-    
+
     /* Neutrals */
     --color-bg: #f8fafc;
     --color-surface: #ffffff;
@@ -25,20 +25,20 @@
     --color-text-muted: #64748b;
     --color-border: #e2e8f0;
     --color-border-hover: #cbd5e1;
-    
+
     /* Gradients */
     --gradient-primary: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
     --gradient-success: linear-gradient(135deg, #10b981 0%, #059669 100%);
     --gradient-warm: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
     --gradient-accent: linear-gradient(135deg, #f59e0b 0%, #fb923c 100%);
-    
+
     /* Shadows */
     --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
     --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.12);
     --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.16);
     --shadow-xl: 0 12px 48px rgba(0, 0, 0, 0.2);
     --shadow-colored: 0 8px 24px var(--color-primary-glow);
-    
+
     /* Spacing */
     --space-xs: 4px;
     --space-sm: 8px;
@@ -47,17 +47,17 @@
     --space-xl: 32px;
     --space-2xl: 48px;
     --space-3xl: 64px;
-    
+
     /* Border Radius */
     --radius-sm: 8px;
     --radius-md: 12px;
     --radius-lg: 16px;
     --radius-xl: 24px;
     --radius-full: 9999px;
-    
+
     /* Typography */
     --font-display: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    
+
     /* Motion */
     --easing-standard: cubic-bezier(0.4, 0, 0.2, 1);
     --easing-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
@@ -222,7 +222,8 @@ body {
    ============================================================================ */
 
 #calibrationModal .modal-close {
-    display: flex; /* Override the hidden display from original styles */
+    display: flex;
+    /* Override the hidden display from original styles */
 }
 
 /* Make overlay clickable to close when recalibrating (optional) */
@@ -431,10 +432,11 @@ body {
 
 .hangul-btn[style*="--progress"] {
     /* New purple border */
-    border-color: #A78BFA; /* Tailwind's violet-400 or a similar shade */
+    border-color: #A78BFA;
+    /* Tailwind's violet-400 or a similar shade */
     /* Maintain the original text-shadow for better contrast against the fill */
     text-shadow: 0 1px 3px rgba(255, 255, 255, 0.8),
-                 0 0 8px rgba(255, 255, 255, 0.6);
+        0 0 8px rgba(255, 255, 255, 0.6);
 }
 
 /* Progress indicator - fills from bottom */
@@ -457,7 +459,7 @@ body {
 
 .hangul-btn[style*="--progress"] {
     text-shadow: 0 1px 3px rgba(255, 255, 255, 0.8),
-                 0 0 8px rgba(255, 255, 255, 0.6);
+        0 0 8px rgba(255, 255, 255, 0.6);
 }
 
 .hangul-btn span,
@@ -491,8 +493,15 @@ body {
 }
 
 @keyframes celebration {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.05); }
+
+    0%,
+    100% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.05);
+    }
 }
 
 /* ============================================================================
@@ -569,9 +578,12 @@ body {
 }
 
 @keyframes pulse-record {
-    0%, 100% {
+
+    0%,
+    100% {
         box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
     }
+
     50% {
         box-shadow: 0 0 0 30px rgba(239, 68, 68, 0);
     }
@@ -606,9 +618,12 @@ body {
 }
 
 @keyframes statusPulse {
-    0%, 100% {
+
+    0%,
+    100% {
         opacity: 1;
     }
+
     50% {
         opacity: 0.7;
     }
@@ -672,6 +687,13 @@ body {
     max-width: 1100px;
     margin: var(--space-2xl) auto;
     width: 100%;
+}
+
+/* Consonant mode: only Total card visible, centered with reduced spacing */
+.cards.consonant-mode {
+    display: flex;
+    justify-content: center;
+    margin: var(--space-md) auto;
 }
 
 .card {
@@ -760,6 +782,7 @@ body {
         opacity: 0;
         transform: scale(0.5);
     }
+
     to {
         opacity: 1;
         transform: scale(1);
@@ -801,9 +824,16 @@ body {
     box-shadow: var(--shadow-lg);
 }
 
+/*
 .plot-panel canvas {
     display: block;
     border-radius: var(--radius-sm);
+}
+*/
+.plot-panel canvas {
+  width: 520px;     /* 원하는 표시 폭 */
+  height: 300px;    /* 원하는 표시 높이 */
+  display: block;
 }
 
 .analysis-plot-caption {
@@ -811,6 +841,18 @@ body {
     color: var(--color-text-muted);
     font-weight: 500;
     margin-top: var(--space-md);
+}
+
+/* Single plot wrapper for fricative/affricate */
+.single-plot-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+}
+
+.plot-panel-full {
+    max-width: 650px;
+    width: 100%;
 }
 
 /* Legacy single plot support */
@@ -835,16 +877,26 @@ body {
         align-items: center;
         flex-wrap: wrap;
     }
-
+    
+    /* plot panel이 캔버스에 끌려 커지지 않게 */
     .plot-panel {
-        width: 100%;
-        max-width: 520px;
-        min-width: auto;
+    flex: 1 1 520px;     /* 기본 폭 */
+    max-width: 520px;    /* 상한 */
     }
+
+
+    /*
 
     .plot-panel canvas {
         width: 100%;
         height: auto;
+    }
+
+    */
+
+    .plot-panel canvas {
+        width: 100%;
+        height: 300px;
     }
 }
 
@@ -927,6 +979,7 @@ body {
     from {
         opacity: 0;
     }
+
     to {
         opacity: 1;
     }
@@ -937,6 +990,7 @@ body {
         opacity: 0;
         transform: translateY(16px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -948,6 +1002,7 @@ body {
         opacity: 0;
         transform: translate(-50%, 20px);
     }
+
     to {
         opacity: 1;
         transform: translate(-50%, 0);
@@ -959,6 +1014,7 @@ body {
         opacity: 0;
         transform: translate(-50%, -45%) scale(0.9);
     }
+
     to {
         opacity: 1;
         transform: translate(-50%, -50%) scale(1);
@@ -974,23 +1030,23 @@ body {
         grid-template-columns: auto 1fr auto;
         gap: var(--space-md);
     }
-    
+
     .brand {
         font-size: 1.5rem;
     }
-    
+
     .button-grid {
         grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
         gap: var(--space-sm);
     }
-    
+
     .hangul-btn {
         font-size: 1.5rem;
     }
 
     .hangul-btn[style*="--progress"] {
         text-shadow: 0 1px 4px rgba(255, 255, 255, 0.9),
-                     0 0 10px rgba(255, 255, 255, 0.7);
+            0 0 10px rgba(255, 255, 255, 0.7);
     }
 
     .analysis-status,
@@ -999,22 +1055,22 @@ body {
         padding: var(--space-3) var(--space-4);
         font-size: 0.95rem;
     }
-    
+
     .cards {
         grid-template-columns: repeat(3, 1fr);
         gap: var(--space-sm);
     }
-    
+
     .card.total {
         grid-column: 2;
         grid-row: 2;
     }
-    
+
     .modal {
         width: calc(100% - 32px);
         padding: var(--space-lg);
     }
-    
+
     .record-btn {
         width: 140px;
         height: 140px;
@@ -1031,15 +1087,15 @@ body {
     .content {
         padding: var(--space-lg) var(--space-md);
     }
-    
+
     .group-title {
         font-size: 1.25rem;
     }
-    
+
     .cards {
         grid-template-columns: repeat(2, 1fr);
     }
-    
+
     .card.total {
         grid-column: 1 / -1;
         grid-row: auto;
@@ -1057,6 +1113,7 @@ body {
    ============================================================================ */
 
 @media (prefers-reduced-motion: reduce) {
+
     *,
     *::before,
     *::after {
@@ -1074,6 +1131,7 @@ body {
 
 /* High contrast mode support */
 @media (prefers-contrast: high) {
+
     .hangul-btn,
     .card,
     .modal {
@@ -1087,14 +1145,14 @@ body {
     .recalibrate-btn .btn-text {
         display: none;
     }
-    
+
     .recalibrate-btn {
         padding: var(--space-sm);
         width: 36px;
         height: 36px;
         justify-content: center;
     }
-    
+
     .recalibrate-btn .btn-icon {
         font-size: 18px;
     }
@@ -1105,4 +1163,19 @@ body {
     .right-side {
         gap: var(--space-sm);
     }
+}
+
+@media (min-width: 769px) {
+  body.stop-mode .cards {
+    grid-template-columns: repeat(4, 220px) !important; /* 고정폭 4칸 */
+    width: fit-content !important;                      /* 그리드 폭을 내용만큼만 */
+    margin-left: auto !important;
+    margin-right: auto !important;
+    max-width: none !important;                         /* 기존 max-width 영향 제거 */
+    justify-content: center;
+  }
+
+  body.stop-mode .card.total {
+    grid-column: 2 / 4;
+  }
 }

@@ -27,6 +27,9 @@ from config import (
     PLOT_OUTPUT_DIR,
 )
 from analysis import consonant as consonant_analysis
+from analysis.stops import analyze_stop, STOP_SET, F0Calibration
+from database import get_user_formants  # 너희 DB 모듈에 이 함수가 있다고 했었지
+
 from analysis.vowel_v2 import (
     analyze_single_audio,
     convert_to_wav,
@@ -370,33 +373,54 @@ def run_vowel_analysis(audio_path: str, symbol: str, userid: int = None) -> dict
         },
     }
 
-
-def run_consonant_analysis(audio_path: str, symbol: str) -> dict:
+def run_consonant_analysis(audio_path: str, symbol: str, userid: int = None) -> dict:
     """
     Perform consonant acoustic analysis on an audio file.
 
-    Analyzes features like VOT, frication, and nasal energy depending
-    on the consonant type.
+    Uses the new modular consonant analysis system:
+    - stops.py: VOT, F0z, F2 onset analysis for ㄱㄲㅋ, ㄷㄸㅌ, ㅂㅃㅍ
+    - fricative.py: Spectral centroid, HF contrast for ㅅㅆㅎ
+    - affricate.py: VOT, frication duration for ㅈㅉㅊ
 
     Args:
         audio_path: Path to the audio file
         symbol: Hangul consonant symbol (e.g., 'ㄱ')
+        userid: Optional user ID for F0 calibration
 
     Returns:
         Analysis result dictionary containing:
         - analysis_type: 'consonant'
         - score: 0-100 score
         - feedback: Text feedback
-        - details: Measured features and reference comparisons
+        - details: Measured features, evaluation, and plot data
 
     Raises:
         ValueError: If analysis fails or consonant not supported
     """
-    syllable = CONSONANT_SYMBOL_TO_SYLLABLE[symbol]
-    info = consonant_analysis.reference.get(syllable)
+    from analysis.consonant import analyze_consonant
+    from analysis.stops import F0Calibration
 
-    if info is None:
-        raise ValueError(f"{symbol} ({syllable}) is not supported.")
+    syllable = CONSONANT_SYMBOL_TO_SYLLABLE.get(symbol)
+    if syllable is None:
+        raise ValueError(f"Unknown consonant symbol: {symbol}")
+
+    # Get F0 calibration data if user is logged in
+    f0_calibration = None
+    if userid:
+        from database import get_user_formants
+        user_formants = get_user_formants(userid)
+        # Use average F0 from calibration vowels (i, u)
+        f0_values = []
+        for sound in ['i', 'u']:
+            if sound in user_formants:
+                f0_mean = user_formants[sound].get('f0_mean')
+                f0_std = user_formants[sound].get('f0_std')
+                if f0_mean is not None:
+                    f0_values.append({'mean': f0_mean, 'std': f0_std})
+        if f0_values:
+            avg_f0_mean = sum(v['mean'] for v in f0_values) / len(f0_values)
+            avg_f0_std = sum(v['std'] for v in f0_values if v['std']) / len([v for v in f0_values if v['std']]) if any(v['std'] for v in f0_values) else 20.0
+            f0_calibration = F0Calibration(mean_hz=avg_f0_mean, sd_hz=avg_f0_std)
 
     # Create temporary WAV file for analysis
     tmp_out = NamedTemporaryFile(delete=False, suffix=".wav")
@@ -410,59 +434,90 @@ def run_consonant_analysis(audio_path: str, symbol: str) -> dict:
         if not convert_to_wav(audio_path, wav_path):
             raise ValueError("Audio conversion failed.")
 
-        # Load and analyze audio
-        snd, y, sr = consonant_analysis.load_sound(wav_path)
-        measured_feats = consonant_analysis.extract_features_for_syllable(
-            snd, y, sr, syllable, info
-        )
+        # Run new consonant analysis (stops/fricatives/affricates)
+        result = analyze_consonant(wav_path=wav_path, syllable=syllable, f0_calibration=f0_calibration)
 
-        # Estimate speaker characteristics
-        vot_for_pitch = measured_feats.get("VOT_ms")
-        f0_est, sex_guess = consonant_analysis.estimate_speaker_f0_and_sex(
-            wav_path=wav_path,
-            vot_ms=vot_for_pitch
-        )
+        if "error" in result:
+            raise ValueError(result["error"])
 
-        # Score against reference
-        sex_for_scoring = sex_guess if sex_guess != "unknown" else "female"
-        per_feature_report, overall_score, advice_list = consonant_analysis.score_against_reference(
-            measured_feats,
-            info["features"],
-            sex_for_scoring
-        )
+        # Extract score and feedback
+        evaluation = result.get("evaluation", {})
+        score = safe_float(evaluation.get("final_score", 0))
+        feedback_text = result.get("feedback", {}).get("text", "")
 
-        # Serialize results
-        features_serialized = {
-            name: {k: safe_float(v) for k, v in data.items()}
-            for name, data in per_feature_report.items()
-        }
-        measured_serialized = {
-            k: safe_float(v) for k, v in measured_feats.items()
-        }
-
-        extras = {}
-        if "burst_dB" in measured_feats:
-            extras["burst_dB"] = safe_float(measured_feats["burst_dB"])
-
-        score = safe_float(overall_score) or 0.0
-        feedback_text = " ".join(advice_list) if advice_list else info.get("coaching")
-
+        # Return structured response for frontend
         return {
             "analysis_type": "consonant",
+            "consonant_type": result.get("type", "unknown"),  # stop, fricative, affricate
             "score": score,
             "feedback": feedback_text,
             "details": {
+                "type": result.get("type", "unknown"),  # For frontend plot rendering
                 "symbol": symbol,
                 "syllable": syllable,
-                "gender": sex_guess,
-                "f0": safe_float(f0_est),
-                "features": features_serialized,
-                "advice_list": advice_list,
-                "coaching": info.get("coaching"),
-                "measured": measured_serialized,
-                "extras": extras,
+                "targets": result.get("targets", {}),
+                "features": result.get("features", {}),
+                "evaluation": evaluation,
+                "plots": evaluation.get("plots", {}),
             },
         }
+    finally:
+        cleanup_temp_file(wav_path)
+'''
+
+def run_consonant_analysis(audio_path: str, symbol: str, userid: int | None = None) -> dict:
+    syllable = CONSONANT_SYMBOL_TO_SYLLABLE[symbol]
+
+    tmp_out = NamedTemporaryFile(delete=False, suffix=".wav")
+    try:
+        wav_path = tmp_out.name
+    finally:
+        tmp_out.close()
+
+    try:
+        if not convert_to_wav(audio_path, wav_path):
+            raise ValueError("Audio conversion failed.")
+
+        # (1) Fetch per-user F0 calibration from DB
+        f0_calib = None
+        if userid is not None:
+            formants = get_user_formants(userid)
+
+            i = formants.get("i") or {}
+            u = formants.get("u") or {}
+
+            f0_mean = i.get("f0_mean") or u.get("f0_mean")
+            f0_std  = i.get("f0_std")  or u.get("f0_std")
+
+            if f0_mean is not None and f0_std is not None and float(f0_std) > 1e-6:
+                f0_calib = F0Calibration(mean_hz=float(f0_mean), sd_hz=float(f0_std))
+
+        # (2) Call consonant dispatcher
+        result = consonant_analysis.analyze_consonant(
+            wav_path=wav_path,
+            syllable=syllable,
+            f0_calibration=f0_calib
+        )
+
+        final_score = None
+        if isinstance(result, dict):
+            final_score = (result.get("evaluation") or {}).get("final_score")
+
+        fb = result.get("feedback")
+        if isinstance(fb, dict):
+            feedback_text = fb.get("text", "")
+        elif isinstance(fb, str):
+            feedback_text = fb
+        else:
+            feedback_text = ""
+
+        return {
+            "analysis_type": "consonant",
+            "score": final_score,
+            "feedback": feedback_text,
+            "details": result,
+        }
+
     finally:
         cleanup_temp_file(wav_path)
 
@@ -491,7 +546,7 @@ async def analyse_uploaded_audio(audio: UploadFile, symbol: str, userid: int = N
     try:
         if analysis_kind == "vowel":
             return await run_in_threadpool(run_vowel_analysis, temp_path, symbol, userid)
-        return await run_in_threadpool(run_consonant_analysis, temp_path, symbol)
+        return await run_in_threadpool(run_consonant_analysis, temp_path, symbol, userid)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     finally:

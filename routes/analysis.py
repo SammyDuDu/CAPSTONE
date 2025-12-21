@@ -22,6 +22,7 @@ from database import (
     save_calibration_sample,
     get_calibration_samples,
     finalize_calibration_sound,
+    finalize_calibration_f0,
     get_calibration_count,
     update_progress,
 )
@@ -36,7 +37,6 @@ from utils import (
 
 # Initialize router
 router = APIRouter(prefix="/api", tags=["Analysis"])
-
 
 # =============================================================================
 # CALIBRATION ENDPOINT
@@ -126,15 +126,22 @@ async def calibration_upload(
 
         f1 = formants.get('f1')
         f2 = formants.get('f2')
+        f0 = formants.get('f0')  # Pitch
 
         if f1 is None or f2 is None:
             raise HTTPException(
                 status_code=422,
                 detail="Could not extract formants. Please try again with clearer audio."
             )
+        
+        if f0 is None or not (50 <= f0 <= 500):
+            raise HTTPException(
+                status_code=422,
+                detail="Could not extract formants. Please try again with clearer audio."
+            )
 
-        # Save this sample
-        save_calibration_sample(userid, sound, sample_num, f1, f2)
+        # Save this sample (including F0)
+        save_calibration_sample(userid, sound, sample_num, f1, f2, f0)
 
         # Check how many samples we have for this sound
         samples = get_calibration_samples(userid, sound)
@@ -150,6 +157,14 @@ async def calibration_upload(
         calibration_count = get_calibration_count(userid)
         calibration_complete = calibration_count >= 2
 
+        if calibration_complete:
+            f0_stats = finalize_calibration_f0(userid)
+            if f0_stats is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Pitch calibration unstable. Please re-record i and u."
+                )
+            
         return {
             "ok": True,
             "message": f"Sample {sample_num} for '{sound}' saved",
@@ -164,7 +179,7 @@ async def calibration_upload(
                 "f1": round(f1, 1),
                 "f2": round(f2, 1),
                 "gender": details.get('gender', 'Unknown'),
-                "f0": round(formants.get('f0', 0), 1) if formants.get('f0') else None
+                "f0": round(f0, 1),
             },
             "final_stats": final_stats  # Mean/SD if sound complete
         }
