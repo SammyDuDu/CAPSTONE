@@ -5,6 +5,8 @@ from typing import Optional, Dict, Any
 from analysis.stops import analyze_stop, STOP_SET, F0Calibration
 from analysis.fricative import analyze_fricative, FRICATIVE_SET
 from analysis.affricate import analyze_affricate, AFFRICATE_SET
+from analysis.nasal import analyze_nasal, NASAL_SET
+from analysis.liquid import analyze_liquid, LIQUID_SET
 
 def analyze_consonant(
     wav_path: str,
@@ -21,11 +23,11 @@ def analyze_consonant(
          return analyze_fricative(wav_path=wav_path, syllable=syllable)
     elif syllable in AFFRICATE_SET:
         return analyze_affricate(wav_path=wav_path, syllable=syllable)
-    # elif syllable in NASAL_SET:
-    #     return analyze_nasal(wav_path=wav_path, syllable=syllable)
-    # elif syllable in LIQUID_SET:
-    #     return analyze_liquid(wav_path=wav_path, syllable=syllable)
+    elif syllable in NASAL_SET:
+         return analyze_nasal(wav_path=wav_path, syllable=syllable)
+    elif syllable in LIQUID_SET:
+         return analyze_liquid(wav_path=wav_path, syllable=syllable)
 
     return {
-        "type": "consonant",
+        "type": "consonant"
     }
