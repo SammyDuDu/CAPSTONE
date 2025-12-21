@@ -72,7 +72,7 @@
     // Update UI when logged in
     function updateLoginState(username, showRecalibrate = true) {
         if (openBtn) openBtn.textContent = username;
-        
+
         // Show/hide recalibrate button
         if (recalibrateBtn) {
             if (showRecalibrate && username) {
@@ -132,11 +132,11 @@
                 const calModal = document.getElementById('calibrationModal');
                 if (calOverlay && calModal) {
                     if (window.resetCalibration) window.resetCalibration();
-                    
+
                     // Mark as initial signup (non-closable)
                     calOverlay.classList.remove('closable');
                     delete calOverlay.dataset.isRecalibration;
-                    
+
                     calOverlay.hidden = false;
                     calModal.hidden = false;
                     document.body.style.overflow = 'hidden';
@@ -234,11 +234,11 @@
                     const calModal = document.getElementById('calibrationModal');
                     if (calOverlay && calModal) {
                         if (window.resetCalibration) window.resetCalibration();
-                        
+
                         // Mark as initial signup (non-closable)
                         calOverlay.classList.remove('closable');
                         delete calOverlay.dataset.isRecalibration;
-                        
+
                         calOverlay.hidden = false;
                         calModal.hidden = false;
                         document.body.style.overflow = 'hidden';
@@ -295,7 +295,7 @@
         try {
             const keys = Object.keys(sessionStorage);
             keys.forEach(k => { if (k.startsWith('progress:')) sessionStorage.removeItem(k); });
-        } catch (e) {}
+        } catch (e) { }
         // Reset progress UI on main page
         if (window.location.pathname === '/') {
             const buttons = document.querySelectorAll('.button-grid .hangul-btn');
@@ -313,7 +313,7 @@
 
     // Recalibrate button handler
     if (recalibrateBtn) {
-        recalibrateBtn.addEventListener('click', function() {
+        recalibrateBtn.addEventListener('click', function () {
             const userid = parseInt(sessionStorage.getItem('userid') || '0', 10);
             if (!userid) {
                 if (window.Toast) {
@@ -327,15 +327,15 @@
             const calModal = document.getElementById('calibrationModal');
             if (calOverlay && calModal) {
                 if (window.resetCalibration) window.resetCalibration();
-                
+
                 // Mark as closable (for recalibration, not initial signup)
                 calOverlay.classList.add('closable');
                 calOverlay.dataset.isRecalibration = 'true';
-                
+
                 calOverlay.hidden = false;
                 calModal.hidden = false;
                 document.body.style.overflow = 'hidden';
-                
+
                 if (window.Toast) {
                     window.Toast.info('Starting voice recalibration...', 2000);
                 }
@@ -392,7 +392,7 @@
                     applyProgress(parsed.progress);
                 }
             }
-        } catch (e) {}
+        } catch (e) { }
 
         // 2) Fetch fresh progress in background and update + cache
         (async function refresh() {
@@ -402,7 +402,7 @@
                 applyProgress(map);
                 try {
                     sessionStorage.setItem('progress:' + username, JSON.stringify({ progress: map, ts: Date.now() }));
-                } catch (e) {}
+                } catch (e) { }
             } catch (e) {
                 // silent
             }
@@ -415,7 +415,7 @@
             // If current page is a sound page, set a flag before navigation
             const onSoundPage = window.location.pathname.includes('/sound');
             if (onSoundPage) {
-                try { localStorage.setItem('cameFromSound', '1'); } catch (e) {}
+                try { localStorage.setItem('cameFromSound', '1'); } catch (e) { }
             }
         });
     }
@@ -431,12 +431,12 @@
                 banner.hidden = false;
             }
         }
-    } catch (e) {}
+    } catch (e) { }
 
     if (bannerClose && banner) {
         bannerClose.addEventListener('click', function () {
             banner.hidden = true;
-            try { localStorage.setItem('hasVisited', '1'); } catch (e) {}
+            try { localStorage.setItem('hasVisited', '1'); } catch (e) { }
         });
     }
 
@@ -518,7 +518,7 @@
         }
 
         // Expose reset function globally
-        window.resetCalibration = function() {
+        window.resetCalibration = function () {
             currentSoundIndex = 0;
             currentSampleNum = 1;
             updatePrompt();
@@ -588,9 +588,13 @@
                         return; // Don't advance, let user retry
                     }
 
-                    // Show success feedback
+                    // Show success feedback with F0 if available
                     if (window.Toast && result.measured) {
-                        window.Toast.success(`F1: ${result.measured.f1}Hz, F2: ${result.measured.f2}Hz`, 2000);
+                        let msg = `F1: ${result.measured.f1}Hz, F2: ${result.measured.f2}Hz`;
+                        if (result.measured.f0) {
+                            msg += `, F0: ${result.measured.f0}Hz`;
+                        }
+                        window.Toast.success(msg, 2000);
                     }
 
                     // Advance to next sample or sound
@@ -648,7 +652,7 @@
 
         // --- FIXED: Add event listener for the overlay to close the modal during recalibration ---
         if (calOverlay) {
-            calOverlay.addEventListener('click', function(e) {
+            calOverlay.addEventListener('click', function (e) {
                 // Only act if the click was directly on the overlay backdrop
                 if (e.target === calOverlay) {
                     closeCalibrationModal();

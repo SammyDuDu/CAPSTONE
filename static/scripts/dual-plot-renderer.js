@@ -825,8 +825,8 @@ class DualPlotRenderer {
         ctx.strokeStyle = '#e2e8f0';
         ctx.lineWidth = 1;
 
-        // F1 lines (horizontal)
-        [200, 300, 400, 500, 600, 700, 800, 900, 1000].forEach(f1 => {
+        // F1 lines (horizontal) - extended to 1500 to match f1Range
+        [200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400, 1500].forEach(f1 => {
             if (f1 < this.f1Range[1] || f1 > this.f1Range[0]) return;
             const y = this.f1ToCanvasY(f1);
             ctx.beginPath();

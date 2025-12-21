@@ -8,6 +8,13 @@
     // Y-vowels (ㅑ,ㅕ,ㅛ,ㅠ,ㅒ,ㅖ) are treated as monophthongs (short glide + vowel)
     const DIPHTHONG_SYMBOLS = ['ㅘ', 'ㅙ', 'ㅚ', 'ㅝ', 'ㅞ', 'ㅟ', 'ㅢ'];
 
+    // Consonant symbols (자음)
+    const CONSONANT_SYMBOLS = ['ㄱ', 'ㄲ', 'ㅋ', 'ㄴ', 'ㄷ', 'ㄸ', 'ㅌ', 'ㄹ', 'ㅁ', 'ㅂ', 'ㅃ', 'ㅍ', 'ㅅ', 'ㅆ', 'ㅈ', 'ㅉ', 'ㅊ', 'ㅎ'];
+
+    function isConsonant(symbol) {
+        return CONSONANT_SYMBOLS.includes(symbol);
+    }
+
     function isDiphthong(symbol) {
         return DIPHTHONG_SYMBOLS.includes(symbol);
     }
@@ -26,7 +33,11 @@
     const plotContainer = document.getElementById('analysisPlot');
     const plotCaption = document.getElementById('analysisPlotCaption');
 
-    // Initialize DualPlotRenderer for side-by-side display
+    // Consonant plot elements
+    const consonantPlotContainer = document.getElementById('consonantPlot');
+    const consonantPlotCaption = document.getElementById('consonantPlotCaption');
+
+    // Initialize DualPlotRenderer for side-by-side display (vowels)
     let dualPlotRenderer = null;
     const formantCanvas = document.getElementById('formantCanvas');
     const articulatoryCanvas = document.getElementById('articulatoryCanvas');
@@ -43,6 +54,16 @@
             // Load standard reference vowels for guests
             loadStandardReferenceVowels();
         }
+    }
+
+    // Initialize ConsonantPlotRenderer for stop consonants (ㄱ/ㄲ/ㅋ, ㄷ/ㄸ/ㅌ, ㅂ/ㅃ/ㅍ)
+    let consonantPlotRenderer = null;
+    const placeCanvas = document.getElementById('placeCanvas');
+    const votCanvas = document.getElementById('votCanvas');
+
+    if (placeCanvas && votCanvas && typeof ConsonantPlotRenderer !== 'undefined') {
+        consonantPlotRenderer = new ConsonantPlotRenderer('placeCanvas', 'votCanvas');
+        console.log('[sound.js] ConsonantPlotRenderer initialized');
     }
 
     // Load calibration data and apply to renderer
@@ -143,10 +164,17 @@
     };
 
     const resetPlot = () => {
+        // Hide vowel plots
         if (plotContainer) plotContainer.hidden = true;
         if (plotCaption) plotCaption.textContent = '';
         if (dualPlotRenderer) {
             dualPlotRenderer.clearTrajectories();
+        }
+        // Hide consonant plots
+        if (consonantPlotContainer) consonantPlotContainer.hidden = true;
+        if (consonantPlotCaption) consonantPlotCaption.textContent = '';
+        if (consonantPlotRenderer) {
+            consonantPlotRenderer.clear();
         }
     };
 
@@ -340,50 +368,195 @@
 
     const renderConsonantCards = (data) => {
         const details = data.details || {};
-        const features = details.features || {};
-        const adviceList = details.advice_list || [];
-        const coaching = details.coaching || '';
+        const consonantType = details.type || data.consonant_type || 'unknown';
+        const feedbackText = data.feedback || '';
+
+        // Debug logging
+        console.log('[sound.js] renderConsonantCards called');
+        console.log('[sound.js] consonantType:', consonantType);
+        console.log('[sound.js] details:', JSON.stringify(details, null, 2));
+
+        // Reset all plots first
         resetPlot();
 
-        featureOrderForConsonant.forEach((featureName, idx) => {
-            const stats = features[featureName];
-            if (!stats) return;
-            if (idx >= metricCardOrder.length) return;
-            const cardKey = metricCardOrder[idx];
-            const title = consonantFeatureLabels[featureName] || featureName;
-            const measuredValue = typeof stats.your_value === 'number'
-                ? stats.your_value
-                : (details.measured && typeof details.measured[featureName] === 'number'
-                    ? details.measured[featureName]
-                    : null);
-            let decimals = 0;
-            let unit = '';
-            if (featureName.includes('_ms')) unit = 'ms';
-            if (featureName.includes('ratio')) {
-                decimals = 3;
-            }
-            if (featureName.includes('kHz')) {
-                unit = 'kHz';
-                decimals = 2;
-            }
-            const body = describeMetric(measuredValue, stats.target_mean, stats.target_sd, { unit, decimals });
-            setCard(cardKey, title, body);
+        // Hide only the 5 feature cards for consonants (keep Total card visible)
+        const featureCards = document.querySelectorAll('.card:not(.total)');
+        featureCards.forEach(card => {
+            card.style.display = 'none';
         });
 
-        const combinedAdvice = adviceList.length ? adviceList.join(' ') : coaching;
-        if (combinedAdvice) {
-            setCard('tension', 'Coaching', combinedAdvice);
+        // Add consonant-mode class for compact layout
+        const cardsSection = document.querySelector('.cards');
+        if (cardsSection) {
+            cardsSection.classList.add('consonant-mode');
         }
+
+        // Get single plot elements
+        const singlePlotContainer = document.getElementById('singleConsonantPlot');
+        const singlePlotCaption = document.getElementById('singleConsonantPlotCaption');
+        const spectralCanvas = document.getElementById('spectralCanvas');
+
+        const syllable = details.syllable || localStorage.getItem('selectedSound') || '';
+
+        // Handle different consonant types
+        if (consonantType === 'stop') {
+            // Stop consonants: 2 plots (place + VOT-F0z)
+            const evaluation = details.evaluation || {};
+            const targets = details.targets || {};
+
+            if (evaluation && consonantPlotRenderer && consonantPlotContainer) {
+                const stopData = {
+                    type: 'stop',
+                    targets: targets,
+                    evaluation: evaluation
+                };
+                consonantPlotRenderer.update(stopData);
+                consonantPlotContainer.hidden = false;
+
+                if (consonantPlotCaption) {
+                    consonantPlotCaption.textContent = `${syllable} 파열음 분석`;
+                }
+                console.log('[sound.js] Stop consonant: 2 plots shown');
+            }
+        } else if (consonantType === 'fricative' || consonantType === 'affricate') {
+            // Fricative/Affricate: 1 plot (spectral)
+            if (singlePlotContainer) {
+                singlePlotContainer.hidden = false;
+                // Draw simple spectral visualization
+                if (spectralCanvas) {
+                    drawSimpleSpectralPlot(spectralCanvas, details, consonantType);
+                }
+                if (singlePlotCaption) {
+                    const typeLabel = consonantType === 'fricative' ? '마찰음' : '파찰음';
+                    singlePlotCaption.textContent = `${syllable} ${typeLabel} 분석`;
+                }
+                console.log('[sound.js] Fricative/Affricate: 1 plot shown');
+            }
+        } else if (consonantType === 'nasal' || consonantType === 'liquid') {
+            // Nasal/Liquid: no plot
+            console.log('[sound.js] Nasal/Liquid: no plot');
+        }
+
+        // Return feedback text for main feedback area
+        return feedbackText;
+    };
+
+    // Simple spectral plot for fricatives/affricates
+    const drawSimpleSpectralPlot = (canvas, details, type) => {
+        const ctx = canvas.getContext('2d');
+        const w = canvas.width = 600;
+        const h = canvas.height = 200;
+
+        // Clear
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, w, h);
+
+        const evaluation = details.evaluation || {};
+        const targets = details.targets || {};
+
+        // Get detected and target
+        const detected = evaluation.detected_fricative || evaluation.detected_affricate;
+        const target = targets.fricative || targets.affricate;
+
+        // Labels and positions based on type
+        let labels, positions, labelSymbols;
+        if (type === 'fricative') {
+            // ㅆ (ss/fortis) - ㅅ (s/lenis) - ㅎ (h/aspirated)
+            labels = ['ss', 's', 'h'];
+            labelSymbols = ['ㅆ', 'ㅅ', 'ㅎ'];
+        } else {
+            // Affricate: ㅉ (fortis) - ㅈ (lenis) - ㅊ (aspirated)
+            labels = ['fortis', 'lenis', 'aspirated'];
+            labelSymbols = ['ㅉ', 'ㅈ', 'ㅊ'];
+        }
+        positions = { [labels[0]]: 0, [labels[1]]: 0.5, [labels[2]]: 1 };
+
+        // Draw title
+        ctx.fillStyle = '#374151';
+        ctx.font = '14px Inter, system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        const targetSymbol = labelSymbols[labels.indexOf(target)] || target;
+        const detectedSymbol = labelSymbols[labels.indexOf(detected)] || detected;
+        ctx.fillText(`Which ${type} does it sound closer to?`, w / 2, 30);
+        ctx.fillText(`(target: ${targetSymbol}, detected: ${detectedSymbol})`, w / 2, 50);
+
+        // Slider line
+        const sliderY = 120;
+        const sliderStartX = 80;
+        const sliderEndX = w - 80;
+        const sliderWidth = sliderEndX - sliderStartX;
+
+        // Draw slider track
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(sliderStartX, sliderY);
+        ctx.lineTo(sliderEndX, sliderY);
+        ctx.stroke();
+
+        // Draw position markers for each sound
+        labels.forEach((label, idx) => {
+            const x = sliderStartX + positions[label] * sliderWidth;
+
+            // Small circle marker
+            ctx.beginPath();
+            ctx.arc(x, sliderY, 8, 0, Math.PI * 2);
+            ctx.fillStyle = label === target ? '#3b82f6' : '#94a3b8';
+            ctx.fill();
+
+            // Label below
+            ctx.fillStyle = '#374151';
+            ctx.font = 'bold 18px Inter, system-ui, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(labelSymbols[idx], x, sliderY + 35);
+        });
+
+        // Draw user position (detected)
+        if (detected && positions[detected] !== undefined) {
+            const userX = sliderStartX + positions[detected] * sliderWidth;
+
+            // User marker (larger orange circle above)
+            ctx.beginPath();
+            ctx.arc(userX, sliderY - 30, 14, 0, Math.PI * 2);
+            ctx.fillStyle = '#f97316';
+            ctx.fill();
+
+            // "You" label
+            ctx.fillStyle = '#374151';
+            ctx.font = '12px Inter, system-ui, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('You', userX, sliderY - 50);
+        }
+
+        // Border
+        ctx.strokeStyle = '#e2e8f0';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(0.5, 0.5, w - 1, h - 1);
     };
 
     const renderCardsForAnalysis = (data) => {
-        resetCards();
         const type = data.analysis_type;
+        const featureCards = document.querySelectorAll('.card:not(.total)');
+
         if (type === 'vowel') {
+            // Show all feature cards for vowels
+            featureCards.forEach(card => {
+                card.style.display = '';
+            });
+            // Remove consonant-mode class if present
+            const cardsSection = document.querySelector('.cards');
+            if (cardsSection) {
+                cardsSection.classList.remove('consonant-mode');
+            }
+            resetCards();
             renderVowelCards(data);
             setCard('total', null, 'Vowel analysis');
         } else if (type === 'consonant') {
+            // renderConsonantCards hides feature cards and draws plots
             renderConsonantCards(data);
+            // Set Total card text for consonant analysis
             setCard('total', null, 'Consonant analysis');
         }
     };
@@ -428,9 +601,16 @@
             return;
         }
 
-        const items = Array.isArray(input)
-            ? input.filter(Boolean)
-            : String(input).split(/\n+/).map(s => s.trim()).filter(Boolean);
+        // Flatten: if input is array, split each item by newline; if string, split directly
+        let items = [];
+        if (Array.isArray(input)) {
+            input.filter(Boolean).forEach(item => {
+                const parts = String(item).split(/\n+/).map(s => s.trim()).filter(Boolean);
+                items.push(...parts);
+            });
+        } else {
+            items = String(input).split(/\n+/).map(s => s.trim()).filter(Boolean);
+        }
 
         if (items.length === 0) {
             feedbackEl.hidden = true;
@@ -457,6 +637,19 @@
     resetCards();
     setScore('');
     setFeedback('');
+
+    // Hide feature cards (not Total) for consonants on initial load
+    if (isConsonant(initialSound)) {
+        const featureCards = document.querySelectorAll('.card:not(.total)');
+        featureCards.forEach(card => {
+            card.style.display = 'none';
+        });
+        // Add consonant-mode class for compact layout
+        const cardsSection = document.querySelector('.cards');
+        if (cardsSection) {
+            cardsSection.classList.add('consonant-mode');
+        }
+    }
 
     let mediaRecorder;
     let chunks = [];
@@ -537,6 +730,8 @@
                         : typeof data.result === 'number'
                             ? data.result
                             : 0;
+
+                    // Show score for all analysis types
                     setScore(score);
 
                     const feedbackItems = [];

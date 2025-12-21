@@ -126,6 +126,7 @@ async def calibration_upload(
 
         f1 = formants.get('f1')
         f2 = formants.get('f2')
+        f0 = formants.get('f0')  # Pitch
 
         if f1 is None or f2 is None:
             raise HTTPException(
@@ -133,8 +134,8 @@ async def calibration_upload(
                 detail="Could not extract formants. Please try again with clearer audio."
             )
 
-        # Save this sample
-        save_calibration_sample(userid, sound, sample_num, f1, f2)
+        # Save this sample (including F0)
+        save_calibration_sample(userid, sound, sample_num, f1, f2, f0)
 
         # Check how many samples we have for this sound
         samples = get_calibration_samples(userid, sound)

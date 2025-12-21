@@ -78,8 +78,14 @@ CAPSTONE/
 │   └── analysis.py      # Sound analysis (/api/analyze-sound*)
 ├── analysis/            # Pronunciation analysis engines
 │   ├── vowel_v2.py      # Vowel formant extraction and scoring
-│   ├── consonant.py     # Consonant feature analysis
+│   ├── consonant.py     # Consonant dispatcher (routes to specific analyzers)
+│   ├── stops.py         # Stop consonant analysis (VOT, F0z, place)
+│   ├── fricative.py     # Fricative analysis (spectral centroid, ㅅ/ㅆ/ㅎ)
+│   ├── affricate.py     # Affricate analysis (VOT + frication, ㅈ/ㅉ/ㅊ)
+│   ├── nasal.py         # Nasal consonant analysis (ㄴ/ㅁ)
+│   ├── liquid.py        # Liquid consonant analysis (ㄹ)
 │   ├── config.py        # Analysis parameters
+│   ├── debug_*.py       # Debugging utilities for each consonant type
 │   └── README.md        # Engine documentation
 ├── static/              # Frontend assets (CSS, JS, images)
 ├── templates/           # Jinja2 HTML templates
@@ -144,8 +150,17 @@ Organized API endpoints:
 - **Threshold**: ±1.5σ (standard deviations) from native speaker mean
 - **Perfect score**: 100 points when within threshold
 - **Penalty**: 60 points per σ beyond threshold (linear decrease from 1.5σ to 3σ)
-- **Vowels**: Based on F1/F2/F3 formant deviations
-- **Consonants**: Based on VOT, frication, nasal energy, etc.
+
+### Analysis by Sound Type
+
+| Type | Sounds | Features | Visualization |
+|------|--------|----------|---------------|
+| **Vowels** | ㅏ ㅓ ㅗ ㅜ ... | F1/F2/F3 formants | Formant chart + Articulatory map |
+| **Stops** | ㄱ ㄲ ㅋ ㄷ ㄸ ㅌ ㅂ ㅃ ㅍ | VOT, F0z, Place | Place chart + VOT-F0z chart |
+| **Fricatives** | ㅅ ㅆ ㅎ | Spectral centroid, HF contrast | Slider (ㅆ-ㅅ-ㅎ) |
+| **Affricates** | ㅈ ㅉ ㅊ | VOT, Frication duration | Slider (ㅉ-ㅈ-ㅊ) |
+| **Nasals** | ㄴ ㅁ | Nasal energy, formants | Feedback only |
+| **Liquids** | ㄹ | Tap/lateral features | Feedback only |
 
 ## AWS EC2 Deployment
 
