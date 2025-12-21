@@ -391,3 +391,45 @@ def finalize_calibration_sound(user_id: int, sound: str) -> dict:
         'f0_mean': f0_mean,
         'f0_std': f0_std
     }
+
+def finalize_calibration_f0(user_id: int) -> dict | None:
+    import numpy as np
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT f0 FROM formant_samples
+                WHERE userid = %s
+                  AND sound IN ('i', 'u')
+                  AND f0 IS NOT NULL
+                """,
+                (user_id,)
+            )
+            rows = cur.fetchall()
+
+    f0_values = [r[0] for r in rows if 50 <= r[0] <= 500]
+
+    if len(f0_values) < 4:
+        return None  # 재녹음 유도
+
+    f0_mean = float(np.mean(f0_values))
+    f0_std = max(float(np.std(f0_values, ddof=1)), 8.0)
+
+    # i, u 둘 다 업데이트 (공통 f0)
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE formants
+                SET f0_mean = %s, f0_std = %s
+                WHERE userid = %s AND sound IN ('i', 'u')
+                """,
+                (f0_mean, f0_std, user_id)
+            )
+            conn.commit()
+
+    return {
+        "f0_mean": f0_mean,
+        "f0_std": f0_std
+    }

@@ -27,6 +27,9 @@ from config import (
     PLOT_OUTPUT_DIR,
 )
 from analysis import consonant as consonant_analysis
+from analysis.stops import analyze_stop, STOP_SET, F0Calibration
+from database import get_user_formants  # 너희 DB 모듈에 이 함수가 있다고 했었지
+
 from analysis.vowel_v2 import (
     analyze_single_audio,
     convert_to_wav,
@@ -459,6 +462,63 @@ def run_consonant_analysis(audio_path: str, symbol: str, userid: int = None) -> 
                 "plots": evaluation.get("plots", {}),
             },
         }
+    finally:
+        cleanup_temp_file(wav_path)
+'''
+
+def run_consonant_analysis(audio_path: str, symbol: str, userid: int | None = None) -> dict:
+    syllable = CONSONANT_SYMBOL_TO_SYLLABLE[symbol]
+
+    tmp_out = NamedTemporaryFile(delete=False, suffix=".wav")
+    try:
+        wav_path = tmp_out.name
+    finally:
+        tmp_out.close()
+
+    try:
+        if not convert_to_wav(audio_path, wav_path):
+            raise ValueError("Audio conversion failed.")
+
+        # (1) Fetch per-user F0 calibration from DB
+        f0_calib = None
+        if userid is not None:
+            formants = get_user_formants(userid)
+
+            i = formants.get("i") or {}
+            u = formants.get("u") or {}
+
+            f0_mean = i.get("f0_mean") or u.get("f0_mean")
+            f0_std  = i.get("f0_std")  or u.get("f0_std")
+
+            if f0_mean is not None and f0_std is not None and float(f0_std) > 1e-6:
+                f0_calib = F0Calibration(mean_hz=float(f0_mean), sd_hz=float(f0_std))
+
+        # (2) Call consonant dispatcher
+        result = consonant_analysis.analyze_consonant(
+            wav_path=wav_path,
+            syllable=syllable,
+            f0_calibration=f0_calib
+        )
+
+        final_score = None
+        if isinstance(result, dict):
+            final_score = (result.get("evaluation") or {}).get("final_score")
+
+        fb = result.get("feedback")
+        if isinstance(fb, dict):
+            feedback_text = fb.get("text", "")
+        elif isinstance(fb, str):
+            feedback_text = fb
+        else:
+            feedback_text = ""
+
+        return {
+            "analysis_type": "consonant",
+            "score": final_score,
+            "feedback": feedback_text,
+            "details": result,
+        }
+
     finally:
         cleanup_temp_file(wav_path)
 
