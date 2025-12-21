@@ -373,7 +373,6 @@ def run_vowel_analysis(audio_path: str, symbol: str, userid: int = None) -> dict
         },
     }
 
-
 def run_consonant_analysis(audio_path: str, symbol: str, userid: int = None) -> dict:
     """
     Perform consonant acoustic analysis on an audio file.
