@@ -24,12 +24,15 @@ class DualPlotRenderer {
         this.formantCtx = this.formantCanvas.getContext('2d');
         this.articulatoryCtx = this.articulatoryCanvas.getContext('2d');
 
-        // Canvas dimensions (larger for better visibility)
+        // Default fallback size (optional)
         this.width = 500;
         this.height = 450;
 
-        // Initialize canvases
-        this.initializeCanvases();
+        // ⬇️ 고정 초기화 대신 “부모 크기 기반”으로 세팅
+        this.resize();
+
+        // resize observer 연결 (추천)
+        this.attachResizeObserver();
 
         // Formant space ranges (Hz) - inverted for chart display
         // Extended range to accommodate all Korean vowels including ㅏ (F1 ~1000Hz)
@@ -89,14 +92,112 @@ class DualPlotRenderer {
 
         console.log('[DualPlotRenderer] Initialized');
         this.draw();
+
+        requestAnimationFrame(() => this.resize());
     }
 
+    /*
+    resize() {
+        if (!this.formantCanvas || !this.articulatoryCanvas) return;
+
+        // 보통 plot-panel이 parentElement임
+        const parent1 = this.formantCanvas.parentElement;
+        const parent2 = this.articulatoryCanvas.parentElement;
+        if (!parent1 || !parent2) return;
+
+        const dpr = window.devicePixelRatio || 1;
+
+        const rect1 = parent1.getBoundingClientRect();
+        const rect2 = parent2.getBoundingClientRect();
+
+        // 부모 폭이 0이면(숨김 상태/레이아웃 전환 중) 스킵
+        if (rect1.width < 10 || rect2.width < 10) return;
+
+        const cssW = Math.min(rect1.width, rect2.width);
+        const cssH = cssW * 0.9;
+
+        this.formantCanvas.style.width = cssW + 'px';
+        this.formantCanvas.style.height = cssH + 'px';
+        this.articulatoryCanvas.style.width = cssW + 'px';
+        this.articulatoryCanvas.style.height = cssH + 'px';
+
+        this.formantCanvas.width = Math.floor(cssW * dpr);
+        this.formantCanvas.height = Math.floor(cssH * dpr);
+        this.articulatoryCanvas.width = Math.floor(cssW * dpr);
+        this.articulatoryCanvas.height = Math.floor(cssH * dpr);
+
+        this.width = cssW;
+        this.height = cssH;
+        this.draw();
+    }
+    */
+
+    resize() {
+        if (!this.formantCanvas || !this.articulatoryCanvas) return;
+
+        const parent1 = this.formantCanvas.parentElement;
+        const parent2 = this.articulatoryCanvas.parentElement;
+        if (!parent1 || !parent2) return;
+
+        const dpr = window.devicePixelRatio || 1;
+
+        const contentWidth = (el) => {
+            // clientWidth는 padding 포함이므로 padding을 빼서 content box 폭을 만든다
+            const cs = getComputedStyle(el);
+            const pl = parseFloat(cs.paddingLeft) || 0;
+            const pr = parseFloat(cs.paddingRight) || 0;
+            const w = (el.clientWidth || 0) - pl - pr;
+            return w;
+        };
+
+        const w1 = contentWidth(parent1);
+        const w2 = contentWidth(parent2);
+
+        // 숨김/전환 중이면 스킵
+        if (w1 < 10 || w2 < 10) return;
+
+        const cssW = Math.min(w1, w2);
+        const cssH = cssW * 0.9;
+
+        // ✅ "표시 크기"는 style로 고정 (레이아웃 안정)
+        this.formantCanvas.style.width = cssW + 'px';
+        this.formantCanvas.style.height = cssH + 'px';
+        this.articulatoryCanvas.style.width = cssW + 'px';
+        this.articulatoryCanvas.style.height = cssH + 'px';
+
+        // ✅ "실제 렌더링 해상도"는 width/height attribute로 (선명도)
+        this.formantCanvas.width = Math.floor(cssW * dpr);
+        this.formantCanvas.height = Math.floor(cssH * dpr);
+        this.articulatoryCanvas.width = Math.floor(cssW * dpr);
+        this.articulatoryCanvas.height = Math.floor(cssH * dpr);
+
+        this.width = cssW;
+        this.height = cssH;
+
+        this.draw();
+    }
+
+    attachResizeObserver() {
+        // 이미 붙어있으면 중복 방지
+        if (this._ro) return;
+
+        const parent1 = this.formantCanvas?.parentElement;
+        const parent2 = this.articulatoryCanvas?.parentElement;
+        if (!parent1 || !parent2) return;
+
+        this._ro = new ResizeObserver(() => this.resize());
+        this._ro.observe(parent1);
+        this._ro.observe(parent2);
+    }
+
+    /*
     initializeCanvases() {
         this.formantCanvas.width = this.width;
         this.formantCanvas.height = this.height;
         this.articulatoryCanvas.width = this.width;
         this.articulatoryCanvas.height = this.height;
     }
+    */
 
     /**
      * Load previous point from localStorage for Old→New animation

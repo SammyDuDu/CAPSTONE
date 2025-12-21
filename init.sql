@@ -28,6 +28,10 @@ CREATE TABLE IF NOT EXISTS formants (
     f1_std FLOAT,
     f2_mean FLOAT,
     f2_std FLOAT,
+
+    f0_mean FLOAT,
+    f0_std FLOAT,
+
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(userid, sound)
 );
@@ -40,6 +44,8 @@ CREATE TABLE IF NOT EXISTS formant_samples (
     sample_num INTEGER NOT NULL CHECK (sample_num BETWEEN 1 AND 3),
     f1 FLOAT NOT NULL,
     f2 FLOAT NOT NULL,
+
+    f0 FLOAT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(userid, sound, sample_num)
 );

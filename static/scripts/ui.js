@@ -590,7 +590,7 @@
 
                     // Show success feedback
                     if (window.Toast && result.measured) {
-                        window.Toast.success(`F1: ${result.measured.f1}Hz, F2: ${result.measured.f2}Hz`, 2000);
+                        window.Toast.success(`F1: ${result.measured.f1}Hz, F2: ${result.measured.f2}Hz, F0: ${result.measured.f0}Hz`, 2000);
                     }
 
                     // Advance to next sample or sound
