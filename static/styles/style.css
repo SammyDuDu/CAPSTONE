@@ -824,16 +824,9 @@ body {
     box-shadow: var(--shadow-lg);
 }
 
-/*
 .plot-panel canvas {
     display: block;
     border-radius: var(--radius-sm);
-}
-*/
-.plot-panel canvas {
-  width: 520px;     /* 원하는 표시 폭 */
-  height: 300px;    /* 원하는 표시 높이 */
-  display: block;
 }
 
 .analysis-plot-caption {
@@ -877,26 +870,16 @@ body {
         align-items: center;
         flex-wrap: wrap;
     }
-    
-    /* plot panel이 캔버스에 끌려 커지지 않게 */
+
     .plot-panel {
-    flex: 1 1 520px;     /* 기본 폭 */
-    max-width: 520px;    /* 상한 */
+        width: 100%;
+        max-width: 520px;
+        min-width: auto;
     }
-
-
-    /*
 
     .plot-panel canvas {
         width: 100%;
         height: auto;
-    }
-
-    */
-
-    .plot-panel canvas {
-        width: 100%;
-        height: 300px;
     }
 }
 
@@ -1163,19 +1146,4 @@ body {
     .right-side {
         gap: var(--space-sm);
     }
-}
-
-@media (min-width: 769px) {
-  body.stop-mode .cards {
-    grid-template-columns: repeat(4, 220px) !important; /* 고정폭 4칸 */
-    width: fit-content !important;                      /* 그리드 폭을 내용만큼만 */
-    margin-left: auto !important;
-    margin-right: auto !important;
-    max-width: none !important;                         /* 기존 max-width 영향 제거 */
-    justify-content: center;
-  }
-
-  body.stop-mode .card.total {
-    grid-column: 2 / 4;
-  }
 }
